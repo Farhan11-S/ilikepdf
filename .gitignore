@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+node_modules/
+*.log
+
+# local scratch — test PDFs shouldn't end up in the repo
+tmp/
+*.local.*

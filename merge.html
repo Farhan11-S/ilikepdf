@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Merge PDF — IlikePDF</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="index.html"><span class="thumb">👍</span>I<span class="accent">like</span>PDF</a>
+  <nav class="nav">
+    <a href="merge.html" class="active">Merge PDF</a>
+    <a href="#" class="soon">Split PDF</a>
+    <a href="#" class="soon">Rotate PDF</a>
+    <a href="#" class="soon">Compress PDF</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Merge PDF files</h1>
+  <p>Combine PDFs in the order you want. Everything runs in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF files</button>
+    <div class="hint">or drop PDFs anywhere on this page</div>
+  </div>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2>Your files</h2>
+      <span>Drag a file to change its position in the merged PDF.</span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+  <aside class="panel" id="panel">
+    <h2>Merge PDF</h2>
+    <p class="lede">Files are merged top to bottom, left to right, in the order shown.</p>
+    <div class="divider"></div>
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Merge PDF</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2>PDFs have been merged</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download merged PDF</button>
+  <button class="linkish" id="restartBtn">Start over with new files</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDFs here</h2>
+    <p>Release to add them to the merge list</p>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden>
+
+<!-- UMD builds: these are classic scripts on purpose, so PDFLib and pdfjsLib
+     are defined as globals before the deferred module below runs. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="module" src="js/tools/merge.js"></script>
+</body>
+</html>
