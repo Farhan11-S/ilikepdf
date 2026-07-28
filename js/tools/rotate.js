@@ -7,7 +7,7 @@
 import "../core/chrome.js";
 import { isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
-import { mountPageGrid } from "../core/pagegrid.js";
+import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
@@ -21,13 +21,22 @@ const panel = mountPanel($("panel"));
 let src = null;      // {name, size, bytes, pages}
 let doc = null;      // pdf.js document, kept open for thumbnails
 let turns = [];      // per page: 0, 90, 180 or 270
+let pageItems = [];
 let result = null;
 
-const grid = mountPageGrid($("pageGrid"), {
+const grid = mountGrid($("pageGrid"), {
+  variant: "tile",
+  items: () => pageItems,
+  render: async item => thumbs.renderPage(await doc.getPage(item.id + 1)),
   controls: [
-    { id: "left",  label: "↺", title: "Rotate left",  onClick: i => turn(i, -90) },
-    { id: "right", label: "↻", title: "Rotate right", onClick: i => turn(i, 90) }
-  ]
+    { id: "left",  label: "↺", title: "Rotate left",  onClick: item => turn(item.id, -90) },
+    { id: "right", label: "↻", title: "Rotate right", onClick: item => turn(item.id, 90) }
+  ],
+  describe: item => ({
+    selected: turns[item.id] !== 0,
+    rotate: turns[item.id],
+    caption: turns[item.id] ? `${item.id + 1} · ${turns[item.id]}°` : String(item.id + 1)
+  })
 });
 
 const norm = deg => ((deg % 360) + 360) % 360;
@@ -89,12 +98,14 @@ async function intake(fileList){
   }
 
   turns = new Array(src.pages).fill(0);
+  pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
   panel.setError(pdfs.length > 1 ? `Rotate works on one PDF at a time — using ${src.name}.` : "");
 
   $("srcName").textContent = src.name;
   $("srcMeta").textContent = plural(src.pages, "page") + " · " + fileSize(src.size);
   showWorkspace();
-  grid.load(doc);
+  grid.reset();
+  grid.refresh();
   update();
 }
 
@@ -104,12 +115,7 @@ $("allRight").onclick = () => turnAll(90);
 $("resetBtn").onclick = () => { turns = turns.map(() => 0); update(); };
 
 function update(){
-  grid.setDescribe(i => ({
-    selected: turns[i] !== 0,
-    clickable: false,
-    rotate: turns[i],
-    caption: turns[i] ? `${i + 1} · ${turns[i]}°` : String(i + 1)
-  }));
+  grid.paint();
 
   const changed = turns.filter(Boolean).length;
   panel.setSummary(
@@ -158,8 +164,8 @@ panel.onAction(async () => {
 
 $("downloadBtn").onclick = () => downloadBlob(result.blob, result.filename);
 $("restartBtn").onclick = () => {
-  src = null; doc = null; result = null; turns = [];
-  grid.load(null);
+  src = null; doc = null; result = null; turns = []; pageItems = [];
+  grid.reset();
   panel.setError("");
   $("heroError").classList.remove("on");
   showHero();

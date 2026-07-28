@@ -1,119 +1,333 @@
-/* The file card grid: thumbnails, drag-to-reorder with FLIP, remove, add-more.
+/* The one grid every tool uses.
 
-   render() rebuilds the whole grid every time. That is fine at this scale —
-   FLIP hides the rebuild by animating each card from where it used to be. */
+   It takes a list of items — `{id, label, meta, thumb}` — and knows nothing
+   about what they are. Files, pages of one document, pages gathered from
+   several: all the same to it.
 
-import * as store from "./store.js";
-import { fileSize } from "./format.js";
+   What it provides, all optional:
+     render     lazy thumbnails via IntersectionObserver, one at a time
+     reorder    drag to reorder, animated with FLIP
+     onRemove   a ✕ in the corner
+     onToggle   the whole tile becomes a button
+     controls   per-tile buttons (rotate left/right, move ←/→)
+     describe   per-item decoration: selected, caption, tag, rotation
+     onAdd      a trailing "add more" button
 
-export function mountGrid(gridEl, { onAdd }){
+   Two variants, differing only in shape: "card" (file-sized, name + meta
+   underneath) and "tile" (page-sized, a single caption).
+
+   refresh() rebuilds the whole grid. That's fine at this scale — FLIP hides
+   the rebuild by animating each tile from where it used to be, and rendered
+   thumbnails are cached by item id so reordering never re-renders. */
+
+const FLIP_EASE = "transform .28s cubic-bezier(.2,.9,.3,1)";
+
+export function mountGrid(el, opts){
+  const {
+    variant = "card",
+    items,
+    render = null,
+    describe = null,
+    reorder = null,
+    onReorderStart = null,   // fires once per drag, before any reorder call
+    onRemove = null,
+    onToggle = null,
+    controls = null,
+    controlsStyle = "overlay",
+    onAdd = null,
+    addLabel = "Add more files",
+    showOrder = false,
+    placeholder = variant === "tile" ? "📄" : "📕"
+  } = opts;
+
+  // A tile is either a button you click or a plain element holding buttons.
+  // Nesting one inside the other isn't valid HTML, so pick one.
+  if(onToggle && (controls || onRemove)){
+    throw new Error("grid: onToggle can't be combined with controls or onRemove");
+  }
+
+  const tileClass = variant === "tile" ? "page-tile" : "card";
+  const sel = "." + tileClass;
+  const thumbCache = new Map();   // item id -> canvas, so reordering never re-renders
+
+  let token = 0;                  // bumped by reset() to cancel in-flight renders
   let dragId = null;
+  const queue = [];
+  let pumping = false;
 
-  function render(){
-    // FIRST: where every card is right now.
-    const before = new Map();
-    [...gridEl.querySelectorAll(".card")].forEach(c => before.set(c.dataset.id, c.getBoundingClientRect()));
+  const io = render
+    ? new IntersectionObserver(entries => {
+        for(const e of entries){
+          if(!e.isIntersecting) continue;
+          io.unobserve(e.target);
+          queue.push(e.target.dataset.id);
+        }
+        pump();
+      }, { rootMargin: "400px 0px" })
+    : null;
 
-    gridEl.innerHTML = "";
-    const files = store.list();
+  // Scanned rather than selected, so an id never has to be escaped for CSS.
+  const find = id => [...el.querySelectorAll(sel)].find(t => t.dataset.id === String(id));
 
-    files.forEach((f, i) => {
-      const card = document.createElement("div");
-      card.className = "card";
-      card.draggable = true;
-      card.dataset.id = f.id;
-      // Stagger only on the very first paint; later renders are reorders.
-      card.style.animationDelay = before.size ? "0ms" : (i * 45) + "ms";
+  async function pump(){
+    if(pumping) return;
+    pumping = true;
+    const mine = token;
+    while(queue.length && mine === token){
+      const id = queue.shift();
+      if(thumbCache.has(id)) continue;
+      const list = items();
+      const i = list.findIndex(x => String(x.id) === String(id));
+      if(i === -1) continue;                       // deleted while queued
+      try{
+        const canvas = await render(list[i], i);
+        if(mine !== token) break;
+        thumbCache.set(String(id), canvas);
+        // The tile may have moved or gone while we were rendering.
+        const tile = find(id);
+        if(tile){
+          tile.querySelector(".thumb-box").replaceChildren(canvas);
+          tile.dataset.rendered = "1";
+          decorate(tile, list[i], i);              // a late arrival still gets its state
+        }
+      }catch(e){
+        // Leave the placeholder; one unrenderable page isn't fatal.
+      }
+    }
+    pumping = false;
+  }
 
-      const thumb = document.createElement("div");
-      thumb.className = "thumb-box";
-      if(f.thumb) thumb.appendChild(f.thumb);
-      else thumb.innerHTML = '<span class="placeholder">📕</span>';
+  /* ---------- tile construction ---------- */
 
-      card.innerHTML =
-        '<span class="order">' + (i + 1) + '</span>' +
-        '<button class="remove" title="Remove file">✕</button>';
-      card.appendChild(thumb);
+  function buildTile(item, i, rebuilding){
+    const clickable = Boolean(onToggle);
+    const tile = document.createElement(clickable ? "button" : "div");
+    if(clickable){
+      tile.type = "button";
+      tile.addEventListener("click", () => onToggle(item, i));
+    }
+    tile.className = "tile " + tileClass;
+    tile.dataset.id = item.id;
+    tile.dataset.index = i;
+    // Stagger only the first paint, and only the first screenful — a 500-page
+    // document shouldn't ripple forever.
+    tile.style.animationDelay = rebuilding ? "0ms" : Math.min(i, 14) * 40 + "ms";
 
+    if(showOrder){
+      const order = document.createElement("span");
+      order.className = "order";
+      order.textContent = i + 1;
+      tile.appendChild(order);
+    }
+
+    if(onRemove){
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "remove";
+      btn.textContent = "✕";
+      btn.title = "Remove";
+      btn.setAttribute("aria-label", `Remove ${item.label ?? "item"}`);
+      btn.addEventListener("click", ev => { ev.stopPropagation(); onRemove(item, i); });
+      tile.appendChild(btn);
+    }
+
+    const box = document.createElement("div");
+    box.className = "thumb-box";
+    const canvas = thumbCache.get(String(item.id)) || item.thumb;
+    if(canvas){
+      box.appendChild(canvas);
+      tile.dataset.rendered = "1";
+    }else{
+      box.innerHTML = `<span class="placeholder">${placeholder}</span>`;
+    }
+    tile.appendChild(box);
+
+    if(variant === "tile"){
+      const cap = document.createElement("div");
+      cap.className = "page-no";
+      tile.appendChild(cap);
+    }else{
       const name = document.createElement("div");
       name.className = "name";
-      name.textContent = f.name;
-
+      name.textContent = item.label ?? "";
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = pageLabel(f) + " · " + fileSize(f.size);
+      meta.textContent = item.meta ?? "";
+      tile.append(name, meta);
+    }
 
-      const move = document.createElement("div");
-      move.className = "move";
-      move.innerHTML =
-        '<button data-dir="-1" aria-label="Move left">←</button>' +
-        '<button data-dir="1" aria-label="Move right">→</button>';
+    if(controls) tile.appendChild(buildControls(item, i));
 
-      card.append(name, meta, move);
+    const mark = document.createElement("span");
+    mark.className = "mark";
+    mark.hidden = true;
+    mark.setAttribute("aria-hidden", "true");
+    tile.appendChild(mark);
 
-      card.querySelector(".remove").onclick = e => { e.stopPropagation(); store.remove(f.id); };
-      move.querySelectorAll("button").forEach(b => b.onclick = e => {
-        e.stopPropagation();
-        store.shift(f.id, +b.dataset.dir);
-      });
+    if(reorder) makeDraggable(tile, item);
+    decorate(tile, item, i);
+    return tile;
+  }
 
-      card.addEventListener("dragstart", ev => {
-        dragId = f.id;
-        ev.dataTransfer.effectAllowed = "move";
-        ev.dataTransfer.setData("text/plain", String(f.id));
-        requestAnimationFrame(() => card.classList.add("dragging"));
-      });
-      card.addEventListener("dragend", () => { dragId = null; render(); });
-      card.addEventListener("dragover", ev => {
-        if(dragId === null) return;
-        ev.preventDefault();
-        const from = store.indexOf(dragId);
-        const to = store.indexOf(f.id);
-        if(from === -1 || to === -1 || from === to) return;
-        // Drop after this card if the pointer is past its midpoint.
-        const rect = card.getBoundingClientRect();
-        const after = ev.clientX > rect.left + rect.width / 2;
-        let target = to + (after ? 1 : 0);
-        if(target > from) target--;
-        if(target === from) return;
-        store.moveTo(from, target);
-        // The re-render dropped the class off the card being dragged.
-        gridEl.querySelector('.card[data-id="' + dragId + '"]')?.classList.add("dragging");
-      });
+  function buildControls(item, i){
+    // "row" sits under the caption and is touch-only (merge's ← →);
+    // "overlay" floats over the thumbnail on hover (rotate's ↺ ↻).
+    const row = controlsStyle === "row";
+    const bar = document.createElement("div");
+    bar.className = row ? "move" : "tile-controls";
+    for(const c of controls){
+      const b = document.createElement("button");
+      b.type = "button";
+      if(!row) b.className = "tile-btn";
+      b.dataset.action = c.id;
+      b.textContent = c.label;
+      b.setAttribute("aria-label", `${c.title}${variant === "tile" ? `, page ${i + 1}` : ""}`);
+      b.title = c.title;
+      b.addEventListener("click", ev => { ev.stopPropagation(); c.onClick(item, i); });
+      bar.appendChild(b);
+    }
+    return bar;
+  }
 
-      gridEl.appendChild(card);
+  /* describe(item, i) -> {selected, clickable, caption, tag, rotate} */
+  function decorate(tile, item, i){
+    const s = describe ? (describe(item, i) || {}) : {};
+
+    tile.classList.toggle("selected", !!s.selected);
+
+    if(onToggle){
+      tile.disabled = s.clickable === false;
+      if(!tile.disabled) tile.setAttribute("aria-pressed", s.selected ? "true" : "false");
+      else tile.removeAttribute("aria-pressed");
+      tile.setAttribute("aria-label", s.label || item.label || `Item ${i + 1}`);
+    }
+
+    const cap = tile.querySelector(".page-no");
+    if(cap) cap.textContent = s.caption ?? item.label ?? String(i + 1);
+
+    const mark = tile.querySelector(".mark");
+    mark.textContent = s.tag ?? "";
+    mark.hidden = s.tag === undefined || s.tag === null || s.tag === "";
+
+    const canvas = tile.querySelector("canvas");
+    if(canvas) applyRotation(canvas, tile.querySelector(".thumb-box"), s.rotate || 0);
+  }
+
+  /* ---------- drag to reorder ---------- */
+
+  function makeDraggable(tile, item){
+    tile.draggable = true;
+
+    tile.addEventListener("dragstart", ev => {
+      dragId = item.id;
+      // One notification per drag, not per dragover — undo should step back a
+      // whole move, not each intermediate position the pointer passed through.
+      onReorderStart?.();
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", String(item.id));
+      requestAnimationFrame(() => tile.classList.add("dragging"));
     });
 
-    const add = document.createElement("button");
-    add.className = "add-card";
-    add.innerHTML = '<span><span class="plus">+</span><br>Add more files</span>';
-    add.onclick = onAdd;
-    gridEl.appendChild(add);
+    tile.addEventListener("dragend", () => { dragId = null; refresh(); });
+
+    tile.addEventListener("dragover", ev => {
+      if(dragId === null) return;
+      ev.preventDefault();
+      const list = items();
+      const from = list.findIndex(x => String(x.id) === String(dragId));
+      const to = list.findIndex(x => String(x.id) === String(item.id));
+      if(from === -1 || to === -1 || from === to) return;
+      // Drop after this tile if the pointer is past its midpoint.
+      const rect = tile.getBoundingClientRect();
+      const after = ev.clientX > rect.left + rect.width / 2;
+      let target = to + (after ? 1 : 0);
+      if(target > from) target--;
+      if(target === from) return;
+      // The caller is responsible for leaving the grid refreshed.
+      reorder(from, target);
+      find(dragId)?.classList.add("dragging");
+    });
+  }
+
+  /* ---------- rendering the whole grid ---------- */
+
+  function refresh(){
+    // FIRST: where every tile is right now.
+    const before = new Map();
+    [...el.querySelectorAll(sel)].forEach(t => before.set(t.dataset.id, t.getBoundingClientRect()));
+
+    io?.disconnect();
+    el.replaceChildren();
+
+    const list = items();
+    list.forEach((item, i) => el.appendChild(buildTile(item, i, before.size > 0)));
+
+    if(onAdd){
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "add-card";
+      add.innerHTML = `<span><span class="plus">+</span><br>${addLabel}</span>`;
+      add.addEventListener("click", onAdd);
+      el.appendChild(add);
+    }
+
+    if(io){
+      el.querySelectorAll(sel).forEach(t => { if(!t.dataset.rendered) io.observe(t); });
+    }
 
     // LAST / INVERT / PLAY.
     if(before.size){
-      gridEl.querySelectorAll(".card").forEach(c => {
-        const old = before.get(c.dataset.id);
+      el.querySelectorAll(sel).forEach(t => {
+        const old = before.get(t.dataset.id);
         if(!old) return;
-        const now = c.getBoundingClientRect();
+        const now = t.getBoundingClientRect();
         const dx = old.left - now.left, dy = old.top - now.top;
         if(!dx && !dy) return;
-        c.style.animation = "none";
-        c.style.transform = `translate(${dx}px,${dy}px)`;
-        c.style.transition = "none";
+        t.style.animation = "none";
+        t.style.transform = `translate(${dx}px,${dy}px)`;
+        t.style.transition = "none";
         requestAnimationFrame(() => {
-          c.style.transition = "transform .28s cubic-bezier(.2,.9,.3,1)";
-          c.style.transform = "";
+          t.style.transition = FLIP_EASE;
+          t.style.transform = "";
         });
       });
     }
   }
 
-  store.subscribe(render);
-  return { render };
+  /* Re-apply describe() to the tiles already on screen. Cheaper than refresh()
+     and it keeps scroll position and hover, so it's what to call when only the
+     decoration changed — a mode switch, a new range, another page turned. */
+  function paint(){
+    const list = items();
+    [...el.querySelectorAll(sel)].forEach(t => {
+      const i = Number(t.dataset.index);
+      if(list[i]) decorate(t, list[i], i);
+    });
+  }
+
+  /* Throw away every rendered thumbnail — a different document is coming. */
+  function reset(){
+    token++;
+    queue.length = 0;
+    thumbCache.clear();
+    io?.disconnect();
+    el.replaceChildren();
+  }
+
+  return { refresh, paint, reset };
 }
 
-function pageLabel(f){
-  if(f.pages === null) return "reading…";
-  return f.pages + (f.pages === 1 ? " page" : " pages");
+/* Turning a portrait thumbnail on its side makes it wider than its box, so a
+   quarter turn also scales down to fit. The CSS transition on the canvas is
+   what makes this read as the page turning rather than snapping. */
+function applyRotation(canvas, box, deg){
+  const d = ((deg % 360) + 360) % 360;
+  if(d % 180 === 0){
+    canvas.style.transform = d ? `rotate(${d}deg)` : "";
+    return;
+  }
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+  if(!w || !h) return;
+  const fit = Math.min(box.clientWidth / h, box.clientHeight / w, 1);
+  canvas.style.transform = `rotate(${d}deg) scale(${fit.toFixed(4)})`;
 }

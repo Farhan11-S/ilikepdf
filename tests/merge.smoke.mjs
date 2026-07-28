@@ -49,11 +49,11 @@ const orderBadges = await page.locator(".card .order").allTextContents();
 check("order badges are 1,2,3", orderBadges.join(",") === "1,2,3");
 
 // --- 3. reorder with the touch move buttons --------------------------------
-await page.evaluate(() => document.querySelectorAll(".card")[0].querySelector('[data-dir="1"]').click());
+await page.evaluate(() => document.querySelectorAll(".card")[0].querySelector('[data-action="right"]').click());
 check("move-right swaps first two", (await names()).join(",") === "beta.pdf,alpha.pdf,gamma.pdf", (await names()).join(","));
-await page.evaluate(() => document.querySelectorAll(".card")[1].querySelector('[data-dir="-1"]').click());
+await page.evaluate(() => document.querySelectorAll(".card")[1].querySelector('[data-action="left"]').click());
 check("move-left restores order", (await names()).join(",") === "alpha.pdf,beta.pdf,gamma.pdf");
-await page.evaluate(() => document.querySelectorAll(".card")[0].querySelector('[data-dir="-1"]').click());
+await page.evaluate(() => document.querySelectorAll(".card")[0].querySelector('[data-action="left"]').click());
 check("move-left at index 0 is a no-op", (await names()).join(",") === "alpha.pdf,beta.pdf,gamma.pdf");
 
 // --- 4. HTML5 drag reorder (synthetic events through the real handlers) ----

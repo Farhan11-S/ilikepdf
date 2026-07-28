@@ -4,7 +4,7 @@ import "../core/chrome.js";
 import * as store from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { mountGrid } from "../core/grid.js";
-import { fileSize } from "../core/format.js";
+import { fileSize, plural } from "../core/format.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
@@ -15,7 +15,29 @@ const fileInput = $("fileInput");
 const panel = mountPanel($("panel"));
 let mergedBlob = null;
 
-mountGrid($("grid"), { onAdd: () => fileInput.click() });
+/* Files are cards: a thumbnail with the name and page count underneath.
+   Array order is output order, so the order badge is the merge position. */
+const grid = mountGrid($("grid"), {
+  variant: "card",
+  showOrder: true,
+  items: () => store.list().map(f => ({
+    id: f.id,
+    label: f.name,
+    meta: (f.pages === null ? "reading…" : plural(f.pages, "page")) + " · " + fileSize(f.size),
+    thumb: f.thumb
+  })),
+  reorder: (from, to) => store.moveTo(from, to),   // notifies, which refreshes us
+  onRemove: item => store.remove(item.id),
+  // Touch devices get no drag, so they get buttons instead.
+  controlsStyle: "row",
+  controls: [
+    { id: "left",  label: "←", title: "Move left",  onClick: item => store.shift(item.id, -1) },
+    { id: "right", label: "→", title: "Move right", onClick: item => store.shift(item.id, 1) }
+  ],
+  onAdd: () => fileInput.click()
+});
+
+store.subscribe(() => grid.refresh());
 
 mountDropzone({
   overlay: $("overlay"),

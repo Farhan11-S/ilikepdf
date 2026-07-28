@@ -10,7 +10,7 @@
 import "../core/chrome.js";
 import { isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
-import { mountPageGrid } from "../core/pagegrid.js";
+import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
@@ -29,12 +29,38 @@ let mode = "range";
 let picked = new Set();   // 0-based page indices, extract mode
 let result = null;        // {blob, filename, count}
 let note = "";            // sticky message about the file itself, not the settings
+let pageItems = [];       // grid items: one per page of the loaded document
+let owner = new Map();    // page index -> which output file it lands in
+let ownerCount = 0;       // how many output files there are
 
-const grid = mountPageGrid($("pageGrid"), {
-  onToggle(i){
+const grid = mountGrid($("pageGrid"), {
+  variant: "tile",
+  items: () => pageItems,
+  render: async item => thumbs.renderPage(await doc.getPage(item.id + 1)),
+  onToggle(item){
     if(mode !== "extract") return;
-    picked.has(i) ? picked.delete(i) : picked.add(i);
+    picked.has(item.id) ? picked.delete(item.id) : picked.add(item.id);
     update();
+  },
+  describe(item){
+    const i = item.id;
+    if(mode === "extract"){
+      const on = picked.has(i);
+      return { selected: on, clickable: true, tag: on ? "✓" : "",
+               label: `Page ${i + 1}${on ? ", selected" : ""}` };
+    }
+    if(mode === "every"){
+      return { selected: true, clickable: false, label: `Page ${i + 1}` };
+    }
+    // Range mode: tag pages with their output number, but only when there is
+    // more than one output to tell apart.
+    const inOutput = owner.has(i);
+    return {
+      selected: inOutput,
+      clickable: false,
+      tag: inOutput && ownerCount > 1 ? String(owner.get(i) + 1) : "",
+      label: `Page ${i + 1}${inOutput ? ", included" : ", not included"}`
+    };
   }
 });
 
@@ -127,8 +153,10 @@ async function intake(fileList){
 
   $("srcName").textContent = src.name;
   $("srcMeta").textContent = plural(src.pages, "page") + " · " + fileSize(src.size);
+  pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
   showWorkspace();
-  grid.load(doc);
+  grid.reset();
+  grid.refresh();
   update();
 }
 
@@ -153,27 +181,11 @@ $("selectNone").onclick = () => { picked = new Set(); update(); };
 function update(){
   const { outputs, error } = plan();
 
-  // Which output, if any, each page belongs to.
-  const owner = new Map();
+  // Which output, if any, each page belongs to. describe() reads this.
+  owner = new Map();
   outputs.forEach((o, n) => o.indices.forEach(i => { if(!owner.has(i)) owner.set(i, n); }));
-
-  grid.setDescribe(i => {
-    const inOutput = owner.has(i);
-    if(mode === "extract"){
-      return { selected: picked.has(i), clickable: true, tag: picked.has(i) ? "✓" : "",
-               label: `Page ${i + 1}${picked.has(i) ? ", selected" : ""}` };
-    }
-    if(mode === "every"){
-      return { selected: true, clickable: false, label: `Page ${i + 1}` };
-    }
-    // Range mode: tag pages with their output number, but only when it's ambiguous.
-    return {
-      selected: inOutput,
-      clickable: false,
-      tag: inOutput && outputs.length > 1 ? String(owner.get(i) + 1) : "",
-      label: `Page ${i + 1}${inOutput ? ", included" : ", not included"}`
-    };
-  });
+  ownerCount = outputs.length;
+  grid.paint();
 
   // A bad range replaces the note; a good one lets the note show again.
   panel.setError(error || note);
@@ -183,9 +195,9 @@ function update(){
     return;
   }
 
-  const pages = outputs.reduce((n, o) => n + o.indices.length, 0);
+  const pageCount = outputs.reduce((n, o) => n + o.indices.length, 0);
   panel.setSummary(
-    "Pages selected: <strong>" + (pages || "—") + "</strong><br>" +
+    "Pages selected: <strong>" + (pageCount || "—") + "</strong><br>" +
     "Files created: <strong>" + (outputs.length || "—") + "</strong>" +
     (outputs.length > 1 ? " <span class='zip-note'>(zipped)</span>" : "")
   );
@@ -256,8 +268,8 @@ panel.onAction(async () => {
 
 $("downloadBtn").onclick = () => downloadBlob(result.blob, result.filename);
 $("restartBtn").onclick = () => {
-  src = null; doc = null; result = null; picked = new Set(); note = "";
-  grid.load(null);
+  src = null; doc = null; result = null; picked = new Set(); note = ""; pageItems = [];
+  grid.reset();
   panel.setError("");
   $("heroError").classList.remove("on");
   showHero();

@@ -120,25 +120,28 @@
 .card{
   width:172px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);
   padding:10px;box-shadow:var(--shadow-sm);position:relative;
-  cursor:grab;user-select:none;
   transition:box-shadow .18s,border-color .18s,transform .18s;
   animation:cardIn .32s cubic-bezier(.2,1.2,.4,1) backwards;
 }
 @keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}
 .card:hover{box-shadow:var(--shadow-md);border-color:#d5d2d7;transform:translateY(-3px)}
-.card.dragging{opacity:.35;cursor:grabbing;box-shadow:var(--shadow-lg);transform:scale(1.03) rotate(1.5deg)}
-.card .order{
+/* Any draggable tile, card or page. */
+.tile[draggable="true"]{cursor:grab;user-select:none}
+.tile.dragging{opacity:.35;cursor:grabbing;box-shadow:var(--shadow-lg);transform:scale(1.03) rotate(1.5deg)}
+/* Shared by both tile variants. */
+.tile .order{
   position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;
   background:var(--ink);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;
+  z-index:1;
 }
-.card .remove{
+.tile .remove{
   position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;
   border:0;background:#fff;box-shadow:var(--shadow-sm);color:var(--ink-soft);
-  font-size:15px;line-height:1;display:grid;place-items:center;
+  font-size:15px;line-height:1;display:grid;place-items:center;z-index:1;
   opacity:0;transform:scale(.8);transition:opacity .15s,transform .15s,color .15s;
 }
-.card:hover .remove{opacity:1;transform:scale(1)}
-.card .remove:hover{color:var(--red)}
+.tile:hover .remove,.tile .remove:focus-visible{opacity:1;transform:scale(1)}
+.tile .remove:hover{color:var(--red)}
 .thumb-box{
   height:200px;background:#f2f0f3;border-radius:4px;overflow:hidden;
   display:grid;place-items:center;
@@ -147,9 +150,9 @@
 .thumb-box .placeholder{font-size:38px;color:#c3c0c7}
 .card .name{font-size:12px;margin-top:9px;line-height:1.35;word-break:break-word;max-height:32px;overflow:hidden}
 .card .meta{font-size:11px;color:var(--ink-soft);margin-top:3px}
-.card .move{display:none;gap:6px;margin-top:8px}
-.card .move button{flex:1;border:1px solid var(--line);background:#fff;border-radius:4px;padding:5px;font-size:13px}
-@media(hover:none){.card .move{display:flex}.card .remove{opacity:1;transform:scale(1)}}
+.tile .move{display:none;gap:6px;margin-top:8px}
+.tile .move button{flex:1;border:1px solid var(--line);background:#fff;border-radius:4px;padding:5px;font-size:13px}
+@media(hover:none){.tile .move{display:flex}.tile .remove{opacity:1;transform:scale(1)}}
 
 .add-card{
   width:172px;min-height:262px;border:2px dashed #d3d0d5;border-radius:var(--radius);
@@ -204,6 +207,22 @@ button.page-tile:not(:disabled){cursor:pointer}
   border-radius:99px;background:var(--red);color:#fff;
   font-size:12px;font-weight:700;line-height:24px;
   box-shadow:var(--shadow-sm);
+}
+
+/* The add button sits in the grid, so it matches whichever tile shape it joins. */
+.page-grid .add-card{width:142px;min-height:197px}
+
+/* Both badges overhang by 8px, so a tile's right-hand mark lands on its
+   neighbour's left-hand order badge. Where a grid uses both, tuck the mark
+   inside the thumbnail instead. */
+.page-grid.inset-marks .tile .mark{top:7px;right:7px}
+
+.canvas-hint{font-size:13px;color:var(--ink-soft);margin:-12px 0 16px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 18px;font-size:12px;color:var(--ink-soft)}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-item b{
+  width:18px;height:18px;border-radius:50%;background:var(--ink);color:#fff;
+  font-size:11px;display:grid;place-items:center;
 }
 
 /* ---------- panel controls ---------- */

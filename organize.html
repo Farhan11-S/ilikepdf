@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organize pages — IlikePDF</title>
+<meta name="description" content="Reorder and delete PDF pages, combining several files into one, entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Organize PDF pages</h1>
+  <p>Drag pages into the order you want and drop the ones you don't. Add as many
+     PDFs as you like — they become one working set. Nothing leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF files</button>
+    <div class="hint">or drop PDFs anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your pages</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <p class="canvas-hint">Drag a page to move it. Use ✕ to remove it.</p>
+    <div class="legend" id="legend"></div>
+    <div class="page-grid inset-marks" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>Organize pages</h2>
+    <p class="lede">Pages are saved in the order shown, left to right.</p>
+    <div class="divider"></div>
+
+    <div class="row-btns">
+      <button type="button" class="btn-quiet" id="undoBtn" disabled>↶ Undo</button>
+      <button type="button" class="btn-quiet" id="resetBtn" disabled>Reset</button>
+    </div>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Keep at least one page</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2>Your pages have been saved</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download PDF</button>
+  <button class="linkish" id="restartBtn">Start over with new files</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDFs here</h2>
+    <p>Release to add their pages to the set</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden>
+
+<!-- UMD builds: classic scripts on purpose, so the globals exist before the module. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="module" src="js/tools/organize.js"></script>
+</body>
+</html>

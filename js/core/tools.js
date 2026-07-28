@@ -41,8 +41,8 @@ export const TOOLS = [
     name: "Organize pages",
     href: "organize.html",
     blurb: "Drag pages into a new order and delete the ones you don't want.",
-    ready: false,
-    nav: false,
+    ready: true,
+    nav: true,
     icon: stroke('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>')
   },
   {

@@ -43,7 +43,7 @@ adding a row there and flipping `ready`.
 | Merge PDF | `merge.html` | done |
 | Split PDF | `split.html` | done |
 | Rotate PDF | `rotate.html` | done |
-| Organize pages | `organize.html` | planned |
+| Organize pages | `organize.html` | done |
 | Page numbers | `page-numbers.html` | planned |
 | Watermark | `watermark.html` | planned |
 | JPG to PDF | `jpg-to-pdf.html` | planned |
@@ -59,6 +59,7 @@ index.html          tool directory
 merge.html          Merge PDF
 split.html          Split PDF
 rotate.html         Rotate PDF
+organize.html       Organize pages
 favicon.svg
 css/tokens.css      design tokens, reset, button primitives
 css/app.css         header, footer, hero, tool grid, workspace, cards, panel
@@ -67,8 +68,7 @@ js/core/chrome.js   injects the shared header + footer
 js/core/store.js    file list state + subscribe
 js/core/dropzone.js page-wide drag & drop + overlay
 js/core/thumbs.js   pdf.js setup + page rendering
-js/core/grid.js     file card grid, FLIP reorder, remove
-js/core/pagegrid.js page tile grid, lazily rendered
+js/core/grid.js     the one grid: cards or page tiles, lazy, FLIP reorder
 js/core/panel.js    action panel, progress bar, error text
 js/core/ranges.js   "1-4, 7, 9-12" parsing
 js/core/format.js   file sizes, pluralisation, base filenames
@@ -77,6 +77,7 @@ js/tools/home.js    landing page tool grid
 js/tools/merge.js   merge logic
 js/tools/split.js   split logic
 js/tools/rotate.js  rotate logic
+js/tools/organize.js reorder/delete logic
 tests/              browser smoke tests + PDF fixtures
 ```
 
@@ -108,10 +109,16 @@ worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
   A 500-page PDF is 500 canvases; don't render them eagerly.
 - A tool that can produce several files downloads a single result directly and
   zips the rest. Don't hand someone a ZIP containing one file.
-- `pagegrid.js` tiles are either a button you click (`onToggle`) or a plain
-  element holding buttons (`controls`) — never both, since nesting buttons isn't
-  valid HTML. Tools describe how a tile should look via `describe(i)`; the grid
-  has no opinion about what selection means.
+- `grid.js` is the only grid. It takes `{id, label, meta, thumb}` items and knows
+  nothing about what they are; tools opt into `render` (lazy thumbnails),
+  `reorder` (drag + FLIP), `onRemove`, `onToggle`, `controls` and `describe`.
+  A tile is either a button you click (`onToggle`) or a plain element holding
+  buttons (`controls`/`onRemove`) — never both, since nesting buttons isn't valid
+  HTML, and passing both throws.
+- Rendered thumbnails are cached by item id, so reordering never re-renders.
+  `reset()` clears the cache when a different document is loaded.
+- Anything reorderable by drag needs a touch fallback: HTML5 drag doesn't fire on
+  touch devices. Merge and Organize both use ← → buttons shown under `hover:none`.
 - Rotation is applied on top of a page's existing `/Rotate`, never assigned
   outright. A page can arrive already rotated, and the thumbnail you turned was
   showing that rotation.
