@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rotate PDF — IlikePDF</title>
+<meta name="description" content="Turn PDF pages the right way up — all at once or one at a time — entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Rotate a PDF file</h1>
+  <p>Turn every page at once, or fix the odd one that came out sideways.
+     It all happens in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF file</button>
+    <div class="hint">or drop a PDF anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your PDF</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <div class="page-grid" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>Rotate PDF</h2>
+    <p class="lede">Turn everything at once, or hover a page to turn just that one.</p>
+    <div class="divider"></div>
+
+    <div class="btn-pair">
+      <button type="button" class="btn-big" id="allLeft">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v5h5"/>
+        </svg>
+        Left
+      </button>
+      <button type="button" class="btn-big" id="allRight">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/>
+        </svg>
+        Right
+      </button>
+    </div>
+    <p class="field-hint">Turns every page a quarter turn.</p>
+
+    <div class="row-btns">
+      <button type="button" class="btn-quiet" id="resetBtn" disabled>Reset all pages</button>
+    </div>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Turn a page first</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2>Your PDF has been rotated</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download rotated PDF</button>
+  <button class="linkish" id="restartBtn">Start over with a new file</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDF here</h2>
+    <p>Release to load it</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+
+<!-- UMD builds: classic scripts on purpose, so the globals exist before the module. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="module" src="js/tools/rotate.js"></script>
+</body>
+</html>

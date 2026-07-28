@@ -13,7 +13,13 @@ import { renderPage } from "./thumbs.js";
 const THUMB_W = 122;
 const THUMB_H = 158;
 
-export function mountPageGrid(el, { onToggle } = {}){
+export function mountPageGrid(el, { onToggle, controls } = {}){
+  // A tile is either a button you click, or a plain element holding buttons.
+  // Nesting one inside the other isn't valid HTML, so pick one.
+  if(onToggle && controls){
+    throw new Error("pagegrid: use onToggle or controls, not both");
+  }
+
   let doc = null;
   let token = 0;                  // bumped on load() to cancel in-flight renders
   let describe = () => ({});
@@ -44,6 +50,7 @@ export function mountPageGrid(el, { onToggle } = {}){
         const box = tile.querySelector(".thumb-box");
         box.replaceChildren(canvas);
         tile.dataset.rendered = "1";
+        decorate(tile, i);          // a late arrival still picks up its rotation
       }catch(e){
         // Leave the placeholder in place; one unrenderable page isn't fatal.
       }
@@ -60,8 +67,11 @@ export function mountPageGrid(el, { onToggle } = {}){
     if(!doc) return;
 
     for(let i = 0; i < doc.numPages; i++){
-      const tile = document.createElement("button");
-      tile.type = "button";
+      const tile = document.createElement(onToggle ? "button" : "div");
+      if(onToggle){
+        tile.type = "button";
+        tile.addEventListener("click", () => onToggle(i));
+      }
       tile.className = "page-tile";
       tile.dataset.index = i;
       // Only stagger the first screenful; a 500-page doc shouldn't ripple forever.
@@ -70,28 +80,54 @@ export function mountPageGrid(el, { onToggle } = {}){
         '<div class="thumb-box"><span class="placeholder">📄</span></div>' +
         '<div class="page-no"></div>' +
         '<span class="mark" aria-hidden="true"></span>';
-      tile.querySelector(".page-no").textContent = i + 1;
-      if(onToggle) tile.addEventListener("click", () => onToggle(i));
+
+      if(controls){
+        const bar = document.createElement("div");
+        bar.className = "tile-controls";
+        for(const c of controls){
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "tile-btn";
+          b.dataset.action = c.id;
+          b.textContent = c.label;
+          b.setAttribute("aria-label", `${c.title}, page ${i + 1}`);
+          b.title = c.title;
+          b.addEventListener("click", ev => { ev.stopPropagation(); c.onClick(i); });
+          bar.appendChild(b);
+        }
+        tile.appendChild(bar);
+      }
+
       el.appendChild(tile);
       io.observe(tile);
     }
     paint();
   }
 
-  /* describe(i) -> { selected, tag, clickable, label } */
-  function paint(){
-    [...el.children].forEach((tile, i) => {
-      const s = describe(i) || {};
-      tile.classList.toggle("selected", !!s.selected);
+  /* describe(i) -> { selected, tag, clickable, caption, label, rotate } */
+  function decorate(tile, i){
+    const s = describe(i) || {};
+
+    tile.classList.toggle("selected", !!s.selected);
+    if(onToggle){
       tile.disabled = !s.clickable;
       if(s.clickable) tile.setAttribute("aria-pressed", s.selected ? "true" : "false");
       else tile.removeAttribute("aria-pressed");
       tile.setAttribute("aria-label", s.label || `Page ${i + 1}`);
+    }
 
-      const mark = tile.querySelector(".mark");
-      mark.textContent = s.tag ?? "";
-      mark.hidden = s.tag === undefined || s.tag === null || s.tag === "";
-    });
+    tile.querySelector(".page-no").textContent = s.caption ?? String(i + 1);
+
+    const mark = tile.querySelector(".mark");
+    mark.textContent = s.tag ?? "";
+    mark.hidden = s.tag === undefined || s.tag === null || s.tag === "";
+
+    const canvas = tile.querySelector("canvas");
+    if(canvas) applyRotation(canvas, tile.querySelector(".thumb-box"), s.rotate || 0);
+  }
+
+  function paint(){
+    [...el.children].forEach((tile, i) => decorate(tile, i));
   }
 
   return {
@@ -99,4 +135,19 @@ export function mountPageGrid(el, { onToggle } = {}){
     paint,
     setDescribe(fn){ describe = fn; paint(); }
   };
+}
+
+/* Turning a portrait thumbnail on its side makes it wider than its box, so a
+   quarter turn also scales down to fit. The CSS transition on the canvas is
+   what makes this read as the page turning rather than snapping. */
+function applyRotation(canvas, box, deg){
+  const d = ((deg % 360) + 360) % 360;
+  if(d % 180 === 0){
+    canvas.style.transform = d ? `rotate(${d}deg)` : "";
+    return;
+  }
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+  if(!w || !h) return;
+  const fit = Math.min(box.clientWidth / h, box.clientHeight / w, 1);
+  canvas.style.transform = `rotate(${d}deg) scale(${fit.toFixed(4)})`;
 }

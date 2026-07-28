@@ -32,7 +32,7 @@ export const TOOLS = [
     name: "Rotate PDF",
     href: "rotate.html",
     blurb: "Turn pages the right way up, all at once or one at a time.",
-    ready: false,
+    ready: true,
     nav: true,
     icon: stroke('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/>')
   },

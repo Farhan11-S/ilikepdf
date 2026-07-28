@@ -170,13 +170,35 @@
 }
 .page-tile .thumb-box{height:158px}
 .page-tile .page-no{font-size:11px;color:var(--ink-soft);margin-top:7px}
-/* Pages not going anywhere fade back, so the selection reads at a glance. */
-.page-tile:not(.selected){opacity:.5}
+/* Opt-in: where "unselected" means "left out of the result" (split), those pages
+   fade back so the selection reads at a glance. Where it just means "untouched"
+   (rotate), dimming would be a lie. */
+.page-grid.dim-unselected .page-tile:not(.selected){opacity:.5}
 .page-tile.selected{border-color:var(--red);box-shadow:0 0 0 2px rgba(229,50,45,.18),var(--shadow-sm)}
 .page-tile.selected .page-no{color:var(--ink);font-weight:600}
-.page-tile:not(:disabled){cursor:pointer}
+button.page-tile:not(:disabled){cursor:pointer}
 .page-tile:not(:disabled):hover{box-shadow:var(--shadow-md);border-color:#d5d2d7;transform:translateY(-3px);opacity:1}
 .page-tile:disabled{cursor:default}
+/* The turn itself is the feedback, so it's animated rather than swapped. */
+.page-tile canvas{transition:transform .32s cubic-bezier(.2,.9,.3,1)}
+
+/* Per-page controls, revealed on hover like the remove button on a file card. */
+.tile-controls{
+  position:absolute;left:0;right:0;bottom:34px;
+  display:flex;justify-content:center;gap:6px;
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;
+}
+.page-tile:hover .tile-controls,
+.tile-controls:focus-within{opacity:1;transform:none}
+.tile-btn{
+  width:30px;height:30px;border-radius:50%;border:1px solid var(--line);
+  background:#fff;box-shadow:var(--shadow-sm);color:var(--ink);
+  font-size:16px;line-height:1;display:grid;place-items:center;
+  transition:color .15s,border-color .15s,transform .12s;
+}
+.tile-btn:hover{color:var(--red);border-color:var(--red);transform:scale(1.08)}
+@media(hover:none){.tile-controls{opacity:1;transform:none}}
+
 .page-tile .mark{
   position:absolute;top:-8px;right:-8px;min-width:24px;height:24px;padding:0 6px;
   border-radius:99px;background:var(--red);color:#fff;
@@ -213,7 +235,19 @@
   padding:8px;font-size:13px;font-weight:600;color:var(--ink);
   transition:border-color .15s,color .15s;
 }
-.btn-quiet:hover{border-color:var(--red);color:var(--red)}
+.btn-quiet:hover:not(:disabled){border-color:var(--red);color:var(--red)}
+.btn-quiet:disabled{color:#b3b1b9;cursor:not-allowed}
+
+.btn-pair{display:flex;gap:8px}
+.btn-big{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;
+  border:1px solid var(--line);background:#fff;border-radius:var(--radius);
+  padding:14px 8px;font-size:13px;font-weight:600;color:var(--ink);
+  transition:border-color .15s,color .15s,background .15s,transform .12s;
+}
+.btn-big svg{width:22px;height:22px}
+.btn-big:hover{border-color:var(--red);color:var(--red);background:#fff5f4}
+.btn-big:active{transform:translateY(1px)}
 .zip-note{font-size:12px}
 
 /* ---------- tool panel ---------- */

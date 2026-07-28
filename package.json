@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8000",
-    "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs"
+    "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs && node tests/rotate.smoke.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.56.1"

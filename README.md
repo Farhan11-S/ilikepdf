@@ -18,11 +18,11 @@ the `package.json` here exists only for the tests below.
 
 ## Testing
 
-Headless-browser smoke tests drive the real UI. `tests/merge.smoke.mjs` adds
-files, reorders, removes, merges and downloads, then parses the downloaded PDF
-back to check its page count and page order. `tests/home.smoke.mjs` covers the
-landing grid and the injected chrome. Merge is the tool everything else is built
-on, so run these after every change.
+Headless-browser smoke tests drive the real UI — one suite per tool, plus
+`home.smoke.mjs` for the landing grid and injected chrome. They assert on what
+came out, not just that something did: downloads are unzipped and read back with
+pdf.js to check page counts, page order, and page rotation. Run them after every
+change; the core modules are shared, so a change for one tool can break another.
 
 ```sh
 npm install && npx playwright install chromium
@@ -42,7 +42,7 @@ adding a row there and flipping `ready`.
 |------|------|--------|
 | Merge PDF | `merge.html` | done |
 | Split PDF | `split.html` | done |
-| Rotate PDF | `rotate.html` | planned |
+| Rotate PDF | `rotate.html` | done |
 | Organize pages | `organize.html` | planned |
 | Page numbers | `page-numbers.html` | planned |
 | Watermark | `watermark.html` | planned |
@@ -57,6 +57,8 @@ section for why.
 ```
 index.html          tool directory
 merge.html          Merge PDF
+split.html          Split PDF
+rotate.html         Rotate PDF
 favicon.svg
 css/tokens.css      design tokens, reset, button primitives
 css/app.css         header, footer, hero, tool grid, workspace, cards, panel
@@ -74,6 +76,7 @@ js/core/download.js blob download helper
 js/tools/home.js    landing page tool grid
 js/tools/merge.js   merge logic
 js/tools/split.js   split logic
+js/tools/rotate.js  rotate logic
 tests/              browser smoke tests + PDF fixtures
 ```
 
@@ -105,6 +108,13 @@ worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
   A 500-page PDF is 500 canvases; don't render them eagerly.
 - A tool that can produce several files downloads a single result directly and
   zips the rest. Don't hand someone a ZIP containing one file.
+- `pagegrid.js` tiles are either a button you click (`onToggle`) or a plain
+  element holding buttons (`controls`) — never both, since nesting buttons isn't
+  valid HTML. Tools describe how a tile should look via `describe(i)`; the grid
+  has no opinion about what selection means.
+- Rotation is applied on top of a page's existing `/Rotate`, never assigned
+  outright. A page can arrive already rotated, and the thumbnail you turned was
+  showing that rotation.
 - Use the tokens in `css/tokens.css`; don't invent new colours or radii.
 - `prefers-reduced-motion` disables all animation. Keep it that way.
 

@@ -1,6 +1,6 @@
 import sys
 
-def make(path, label, npages):
+def make(path, label, npages, rotate=0):
     objs = {}
     page_ids = [4 + 2 * i for i in range(npages)]
     objs[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
@@ -12,7 +12,8 @@ def make(path, label, npages):
         text = ("%s - page %d of %d" % (label, i + 1, npages)).encode()
         stream = (b"BT /F1 28 Tf 60 700 Td (" + text + b") Tj ET\n"
                   b"1 0 0 RG 4 w 40 40 m 555 40 l S\n")
-        objs[pid] = (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+        spin = b"/Rotate %d " % rotate if rotate else b""
+        objs[pid] = (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] " + spin +
                      b"/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % cid)
         objs[cid] = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream)
 
@@ -29,6 +30,7 @@ def make(path, label, npages):
         out += b"%010d 00000 n \n" % offsets.get(num, 0)
     out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (n, xref)
     open(path, "wb").write(out)
-    print("wrote", path, len(out), "bytes,", npages, "pages")
+    print("wrote", path, len(out), "bytes,", npages, "pages, /Rotate", rotate)
 
-make(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+make(sys.argv[1], sys.argv[2], int(sys.argv[3]),
+     int(sys.argv[4]) if len(sys.argv) > 4 else 0)
