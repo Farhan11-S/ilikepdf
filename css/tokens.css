@@ -21,6 +21,10 @@ body{
   color:var(--ink);
   background:var(--bg);
   -webkit-font-smoothing:antialiased;
+  /* Column layout so the footer can be pushed to the bottom of short pages. */
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
 }
 button{font-family:inherit;cursor:pointer}
 :focus-visible{outline:3px solid #7ab7ff;outline-offset:2px}

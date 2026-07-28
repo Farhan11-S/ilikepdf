@@ -18,9 +18,11 @@ the `package.json` here exists only for the tests below.
 
 ## Testing
 
-A headless-browser smoke test drives the real UI: add files, reorder, remove,
-merge, download, then parses the downloaded PDF back to check its page count.
-Merge is the tool everything else is built on, so run this after every change.
+Headless-browser smoke tests drive the real UI. `tests/merge.smoke.mjs` adds
+files, reorders, removes, merges and downloads, then parses the downloaded PDF
+back to check its page count and page order. `tests/home.smoke.mjs` covers the
+landing grid and the injected chrome. Merge is the tool everything else is built
+on, so run these after every change.
 
 ```sh
 npm install && npx playwright install chromium
@@ -32,14 +34,23 @@ npm test
 
 ## Tools
 
+The registry in `js/core/tools.js` is the single source of truth — the landing
+grid, the header nav, and the footer all read from it. Adding a tool means
+adding a row there and flipping `ready`.
+
 | Tool | Page | Status |
 |------|------|--------|
 | Merge PDF | `merge.html` | done |
-| Split PDF | — | planned |
-| Rotate PDF | — | planned |
-| Organize pages | — | planned |
-| Page numbers / watermark | — | planned |
-| JPG ↔ PDF | — | planned |
+| Split PDF | `split.html` | planned |
+| Rotate PDF | `rotate.html` | planned |
+| Organize pages | `organize.html` | planned |
+| Page numbers | `page-numbers.html` | planned |
+| Watermark | `watermark.html` | planned |
+| JPG to PDF | `jpg-to-pdf.html` | planned |
+| PDF to JPG | `pdf-to-jpg.html` | planned |
+
+There is deliberately no Compress or Office-conversion tool — see the last
+section for why.
 
 ## Layout
 
@@ -48,16 +59,24 @@ index.html          tool directory
 merge.html          Merge PDF
 favicon.svg
 css/tokens.css      design tokens, reset, button primitives
-css/app.css         header, hero, workspace, cards, panel
+css/app.css         header, footer, hero, tool grid, workspace, cards, panel
+js/core/tools.js    the tool registry
+js/core/chrome.js   injects the shared header + footer
 js/core/store.js    file list state + subscribe
 js/core/dropzone.js page-wide drag & drop + overlay
 js/core/thumbs.js   pdf.js setup + page rendering
 js/core/grid.js     card grid, FLIP reorder, remove
 js/core/panel.js    action panel, progress bar, error text
 js/core/download.js blob download helper
+js/tools/home.js    landing page tool grid
 js/tools/merge.js   merge logic
 tests/              browser smoke tests + PDF fixtures
 ```
+
+Every page carries empty `<header class="site-header">` and
+`<footer class="site-footer">` shells that `chrome.js` fills in. The shells stay
+in the HTML so the 64px sticky header keeps its height and position before any
+script runs — injecting the whole element would make the page jump on load.
 
 ## Libraries
 
@@ -84,3 +103,8 @@ worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
 
 Don't build UI that implies otherwise: it cannot encrypt or password-protect,
 meaningfully compress, extract or edit text, or convert to/from Office formats.
+
+That's why there is no Compress tool. All pdf-lib could do is strip metadata and
+re-save with `useObjectStreams: true`, which saves low single-digit percentages —
+not what anyone means by "compress". Word/Excel conversion isn't possible client
+side at all. Neither appears in the tool registry, so neither is advertised.

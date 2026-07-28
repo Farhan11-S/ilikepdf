@@ -4,31 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IlikePDF — PDF tools that run in your browser</title>
+<meta name="description" content="Free PDF tools that work entirely in your browser. Merge, split, rotate and convert PDFs without uploading a thing.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
-<header class="site-header">
-  <a class="logo" href="index.html"><span class="thumb">👍</span>I<span class="accent">like</span>PDF</a>
-  <nav class="nav">
-    <a href="merge.html">Merge PDF</a>
-    <a href="#" class="soon">Split PDF</a>
-    <a href="#" class="soon">Rotate PDF</a>
-    <a href="#" class="soon">Compress PDF</a>
-  </nav>
-</header>
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
 
-<!-- Placeholder. Phase 1 replaces this with the full tool grid. -->
-<section class="hero">
-  <h1>PDF tools that never upload your files</h1>
-  <p>Every tool runs entirely in your browser. Your documents stay on your device.</p>
-  <div class="dropzone">
-    <a class="btn-primary" href="merge.html">Merge PDF</a>
-    <div class="hint">More tools are on the way</div>
-  </div>
+<section class="hero compact">
+  <h1>Every tool you need to work with PDFs</h1>
+  <p>Merge, split, rotate and convert — all of it running inside your browser.
+     Your files are never uploaded, because there is no server to upload them to.</p>
 </section>
 
+<p class="tool-count" id="toolCount"></p>
+
+<main class="tool-grid" id="toolGrid"></main>
+
+<footer class="site-footer"></footer>
+
+<script type="module" src="js/tools/home.js"></script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 /* Merge PDF — combines every file in the list, in list order, into one document. */
 
+import "../core/chrome.js";
 import * as store from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { mountGrid, fileSize } from "../core/grid.js";

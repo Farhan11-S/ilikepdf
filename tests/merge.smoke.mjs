@@ -1,48 +1,10 @@
-/* Merge PDF smoke test. Not part of the shipped site — dev tooling only.
- *
- *   python3 -m http.server 8000 &
- *   npm i playwright-core && npx playwright install chromium
- *   BASE=http://localhost:8000 node tests/merge.smoke.mjs
- *
- * Set CHROME to a browser executable if playwright-core can't find one.
- */
-import { chromium } from "playwright-core";
+/* Merge PDF smoke test. See tests/harness.mjs for how to run it. */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { launch, suite, BASE, FIX, TMP } from "./harness.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BASE = process.env.BASE || "http://localhost:8000";
-const FIX = path.join(HERE, "fixtures");
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "ilikepdf-"));
-const EXE = process.env.CHROME || findChrome();
-
-function findChrome(){
-  const root = path.join(os.homedir(), ".cache/ms-playwright");
-  if(!fs.existsSync(root)) return undefined;   // let playwright-core try its default
-  for(const dir of fs.readdirSync(root).filter(d => d.startsWith("chromium-")).sort().reverse()){
-    for(const rel of ["chrome-linux64/chrome", "chrome-linux/chrome",
-                      "chrome-mac/Chromium.app/Contents/MacOS/Chromium"]){
-      const p = path.join(root, dir, rel);
-      if(fs.existsSync(p)) return p;
-    }
-  }
-  return undefined;
-}
-
-const pass = [], fail = [];
-const check = (name, ok, detail = "") =>
-  (ok ? pass : fail).push(name + (detail ? "  → " + detail : ""));
-
-const browser = await chromium.launch({ executablePath: EXE, args: ["--no-sandbox"] });
-const ctx = await browser.newContext({ acceptDownloads: true });
-const page = await ctx.newPage();
-
-const consoleErrors = [];
-page.on("console", m => { if (m.type() === "error") consoleErrors.push(m.text() + " @ " + JSON.stringify(m.location())); });
-page.on("pageerror", e => consoleErrors.push("pageerror: " + e.message));
-page.on("response", r => { if (r.status() >= 400) consoleErrors.push("HTTP " + r.status() + " " + r.url()); });
+const { check, report } = suite("merge");
+const { browser, page, errors: consoleErrors } = await launch();
 
 await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
 
@@ -50,6 +12,17 @@ await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
 check("hero visible on load", await page.locator("#hero").isVisible());
 check("workspace hidden on load", !(await page.locator("#workspace").isVisible()));
 check("action button starts disabled", await page.locator(".btn-action").isDisabled());
+check("header and footer are injected",
+  (await page.locator(".site-header .logo").count()) === 1 &&
+  (await page.locator(".site-footer .privacy").count()) === 1);
+
+// The hero view has to survive a narrow screen too, not just the workspace.
+await page.setViewportSize({ width: 375, height: 800 });
+await page.waitForTimeout(200);
+check("hero has no horizontal overflow at 375px", await page.evaluate(() =>
+  document.documentElement.scrollWidth - document.documentElement.clientWidth) <= 0);
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.waitForTimeout(200);
 
 // --- 2. add three PDFs -----------------------------------------------------
 await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/beta.pdf`, `${FIX}/gamma.pdf`]);
@@ -184,20 +157,7 @@ await page.setViewportSize({ width: 1280, height: 900 });
 await page.waitForTimeout(300);
 await page.screenshot({ path: path.join(TMP, "desktop.png") });
 
-// --- 13. landing page ------------------------------------------------------
-await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-check("index.html links to merge", (await page.locator('a[href="merge.html"]').count()) >= 1);
-
 check("no console errors", consoleErrors.length === 0, consoleErrors.join(" || "));
 
 await browser.close();
-
-console.log("artifacts in " + TMP);
-console.log("\nPASS (" + pass.length + ")");
-pass.forEach(p => console.log("  ✓ " + p));
-if (fail.length) {
-  console.log("\nFAIL (" + fail.length + ")");
-  fail.forEach(f => console.log("  ✗ " + f));
-  process.exit(1);
-}
-console.log("\nall green");
+report();

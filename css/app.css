@@ -22,15 +22,72 @@
 @media(max-width:760px){.nav{display:none}}
 
 /* ---------- hero ---------- */
-.hero{max-width:820px;margin:0 auto;padding:64px 24px 80px;text-align:center}
-.hero h1{font-size:44px;line-height:1.1;margin:0 0 14px;font-weight:700;letter-spacing:-1px}
-.hero p{font-size:19px;color:var(--ink-soft);margin:0 auto 40px;max-width:560px;line-height:1.5}
+/* width:100% matters: body is a flex column, and a flex item with auto side
+   margins sizes to max-content instead of shrinking. Same for .tool-grid/.done. */
+.hero{width:100%;max-width:820px;margin:0 auto;padding:64px 24px 80px;text-align:center}
+.hero h1{font-size:44px;line-height:1.1;margin:0 0 14px;font-weight:700;letter-spacing:-1px;text-wrap:balance}
+.hero p{font-size:19px;color:var(--ink-soft);margin:0 auto 40px;max-width:560px;line-height:1.5;text-wrap:pretty}
 .dropzone{
   border:2px dashed #d8d5da;border-radius:14px;padding:56px 24px;
   background:#fcfbfc;transition:border-color .2s,background .2s,transform .2s;
 }
 .dropzone.hot{border-color:var(--red);background:#fff5f4;transform:scale(1.01)}
 .dropzone .hint{margin-top:18px;font-size:14px;color:var(--ink-soft)}
+
+/* A directory page leads straight into the grid, so it needs less air below. */
+.hero.compact{padding:56px 24px 34px}
+.hero.compact p{margin-bottom:0}
+
+/* ---------- tool grid ---------- */
+.tool-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:18px;
+  width:100%;max-width:1060px;margin:0 auto;padding:0 24px 72px;
+}
+.tool-card{
+  display:block;text-decoration:none;color:inherit;
+  background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+  padding:22px 20px;box-shadow:var(--shadow-sm);
+  transition:box-shadow .18s,border-color .18s,transform .18s;
+  animation:cardIn .32s cubic-bezier(.2,1.2,.4,1) backwards;
+}
+.tool-card:hover{box-shadow:var(--shadow-md);border-color:#d5d2d7;transform:translateY(-3px)}
+.tool-card .icon{
+  width:44px;height:44px;border-radius:11px;background:var(--red);color:#fff;
+  display:grid;place-items:center;margin-bottom:15px;
+  transition:transform .25s cubic-bezier(.2,1.4,.4,1);
+}
+.tool-card .icon svg{width:23px;height:23px}
+.tool-card:hover .icon{transform:rotate(-8deg) scale(1.07)}
+.tool-card h3{margin:0 0 6px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.tool-card p{margin:0;font-size:13px;color:var(--ink-soft);line-height:1.5}
+
+/* Coming soon: present, legible, clearly not clickable. */
+.tool-card.soon{background:#fbfafb;box-shadow:none;cursor:default}
+.tool-card.soon:hover{box-shadow:none;border-color:var(--line);transform:none}
+.tool-card.soon:hover .icon{transform:none}
+.tool-card.soon .icon{background:#dcdade;color:#fff}
+.tool-card.soon h3{color:var(--ink-soft)}
+.tool-card.soon p{color:#9d9aa3}
+.tool-card .badge{
+  font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ink-soft);background:#eceaee;border-radius:99px;padding:3px 8px;
+}
+.tool-count{text-align:center;font-size:14px;color:var(--ink-soft);margin:0 0 26px}
+
+/* ---------- footer ---------- */
+.site-footer{
+  border-top:1px solid var(--line);background:#fff;
+  padding:30px 24px 36px;text-align:center;
+  margin-top:auto;   /* never floats mid-page on a short page */
+}
+.footer-tools{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:8px 22px;
+  font-size:13px;font-weight:600;margin-bottom:20px;
+}
+.footer-tools a{color:var(--ink);text-decoration:none}
+.footer-tools a:hover{color:var(--red)}
+.footer-tools .soon{color:#b3b1b9}
+.site-footer .privacy{margin:0;font-size:13px;color:var(--ink-soft)}
 
 /* ---------- full page drag overlay ---------- */
 .drop-overlay{
@@ -137,10 +194,12 @@
   .canvas{padding:20px 16px 160px}
   .hero h1{font-size:32px}
   .hero p{font-size:17px}
+  /* The panel is docked to the bottom on narrow screens — keep it off the footer. */
+  .workspace.on ~ .site-footer{padding-bottom:120px}
 }
 
 /* ---------- done screen ---------- */
-.done{display:none;text-align:center;padding:70px 24px 100px;max-width:640px;margin:0 auto}
+.done{display:none;text-align:center;padding:70px 24px 100px;width:100%;max-width:640px;margin:0 auto}
 .done.on{display:block;animation:popIn .3s ease}
 .done .check{
   width:78px;height:78px;border-radius:50%;background:#eafaef;color:#1fab4d;
