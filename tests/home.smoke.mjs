@@ -1,6 +1,12 @@
 /* Landing page + shared chrome smoke test. See tests/harness.mjs for how to run it. */
 import path from "node:path";
 import { launch, suite, BASE, TMP } from "./harness.mjs";
+// The registry is plain data, so the test can read the same source of truth the
+// page does. Counts then stay correct as tools ship, with no edits here.
+import { TOOLS } from "../js/core/tools.js";
+
+const READY = TOOLS.filter(t => t.ready);
+const SOON = TOOLS.filter(t => !t.ready);
 
 const { check, report } = suite("home");
 const { browser, page, errors } = await launch();
@@ -22,27 +28,29 @@ check("'All tools' is the active nav item here",
 
 // --- tool grid -------------------------------------------------------------
 const cards = page.locator(".tool-card");
-check("every tool has a card", (await cards.count()) === 8, (await cards.count()) + " cards");
-check("every card has an icon", (await page.locator(".tool-card .icon svg").count()) === 8);
-check("every card has a blurb", (await page.locator(".tool-card p").count()) === 8);
+check("every tool has a card", (await cards.count()) === TOOLS.length, (await cards.count()) + " cards");
+check("every card has an icon", (await page.locator(".tool-card .icon svg").count()) === TOOLS.length);
+check("every card has a blurb", (await page.locator(".tool-card p").count()) === TOOLS.length);
 
 const ready = page.locator(".tool-card:not(.soon)");
-check("merge is the only ready tool", (await ready.count()) === 1);
-check("ready tool links to its page",
-  (await ready.first().getAttribute("href")) === "merge.html");
+check("ready tools match the registry", (await ready.count()) === READY.length,
+  (await ready.count()) + " vs " + READY.length);
+check("ready tools link to their pages",
+  (await ready.evaluateAll(els => els.map(e => e.getAttribute("href")))).join(",")
+    === READY.map(t => t.href).join(","));
 
 const soon = page.locator(".tool-card.soon");
-check("unbuilt tools are shown, not hidden", (await soon.count()) === 7);
-check("unbuilt tools are visible", await soon.first().isVisible());
-check("unbuilt tools carry a Soon badge", (await page.locator(".tool-card.soon .badge").count()) === 7);
+check("unbuilt tools are shown, not hidden", (await soon.count()) === SOON.length);
+check("unbuilt tools are visible", SOON.length === 0 || await soon.first().isVisible());
+check("unbuilt tools carry a Soon badge", (await page.locator(".tool-card.soon .badge").count()) === SOON.length);
 check("unbuilt tools are marked disabled",
-  (await page.locator('.tool-card.soon[aria-disabled="true"]').count()) === 7);
+  (await page.locator('.tool-card.soon[aria-disabled="true"]').count()) === SOON.length);
 check("unbuilt tools are not links", (await page.locator("a.tool-card.soon").count()) === 0);
 check("unbuilt tools are not keyboard focusable", await page.evaluate(() =>
   [...document.querySelectorAll(".tool-card.soon")].every(c => c.tabIndex < 0)));
 
 check("tool count is honest about progress",
-  (await page.locator("#toolCount").textContent()).includes("1 of 8"),
+  (await page.locator("#toolCount").textContent()).includes(`${READY.length} of ${TOOLS.length}`),
   await page.locator("#toolCount").textContent());
 
 // No tool may be advertised that pdf-lib cannot actually deliver.
@@ -51,8 +59,14 @@ check("no compress/encrypt/office tools are advertised",
   !/compress|password|protect|encrypt|word|excel|powerpoint/.test(names), names);
 
 // --- footer links match the registry ---------------------------------------
-check("footer lists all 8 tools", (await page.locator(".footer-tools > *").count()) === 8);
-check("footer links only to built tools", (await page.locator(".footer-tools a").count()) === 1);
+check("footer lists every tool", (await page.locator(".footer-tools > *").count()) === TOOLS.length);
+check("footer links only to built tools", (await page.locator(".footer-tools a").count()) === READY.length);
+
+// Every tool the registry calls ready must actually have a page that loads.
+for(const t of READY){
+  const res = await page.request.get(BASE + "/" + t.href);
+  check(`${t.name} page exists (${t.href})`, res.status() === 200, "HTTP " + res.status());
+}
 
 // --- navigation actually works ---------------------------------------------
 await page.locator('.tool-card[href="merge.html"]').click();

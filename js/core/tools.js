@@ -23,7 +23,7 @@ export const TOOLS = [
     name: "Split PDF",
     href: "split.html",
     blurb: "Pull out page ranges, pick single pages, or burst every page.",
-    ready: false,
+    ready: true,
     nav: true,
     icon: stroke('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18" stroke-dasharray="3 3"/>')
   },

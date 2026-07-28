@@ -41,7 +41,7 @@ adding a row there and flipping `ready`.
 | Tool | Page | Status |
 |------|------|--------|
 | Merge PDF | `merge.html` | done |
-| Split PDF | `split.html` | planned |
+| Split PDF | `split.html` | done |
 | Rotate PDF | `rotate.html` | planned |
 | Organize pages | `organize.html` | planned |
 | Page numbers | `page-numbers.html` | planned |
@@ -65,11 +65,15 @@ js/core/chrome.js   injects the shared header + footer
 js/core/store.js    file list state + subscribe
 js/core/dropzone.js page-wide drag & drop + overlay
 js/core/thumbs.js   pdf.js setup + page rendering
-js/core/grid.js     card grid, FLIP reorder, remove
+js/core/grid.js     file card grid, FLIP reorder, remove
+js/core/pagegrid.js page tile grid, lazily rendered
 js/core/panel.js    action panel, progress bar, error text
+js/core/ranges.js   "1-4, 7, 9-12" parsing
+js/core/format.js   file sizes, pluralisation, base filenames
 js/core/download.js blob download helper
 js/tools/home.js    landing page tool grid
 js/tools/merge.js   merge logic
+js/tools/split.js   split logic
 tests/              browser smoke tests + PDF fixtures
 ```
 
@@ -85,6 +89,7 @@ module runs.
 
 - **pdf-lib 1.17.1** — all PDF *writing*. `PDFLib` global.
 - **pdf.js 3.11.174** — preview rendering only. `pdfjsLib` global.
+- **JSZip 3.10.1** — only on pages that can emit more than one file. `JSZip` global.
 
 pdf.js's worker is fetched and re-served as a blob URL, because a cross-origin
 worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
@@ -96,6 +101,10 @@ worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
   pdf-lib and pdf.js — both detach the underlying buffer, and the next read then
   fails silently.
 - Order in the `store` array *is* output order.
+- Page grids render thumbnails lazily via `IntersectionObserver`, one at a time.
+  A 500-page PDF is 500 canvases; don't render them eagerly.
+- A tool that can produce several files downloads a single result directly and
+  zips the rest. Don't hand someone a ZIP containing one file.
 - Use the tokens in `css/tokens.css`; don't invent new colours or radii.
 - `prefers-reduced-motion` disables all animation. Keep it that way.
 

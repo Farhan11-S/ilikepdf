@@ -4,6 +4,7 @@
    FLIP hides the rebuild by animating each card from where it used to be. */
 
 import * as store from "./store.js";
+import { fileSize } from "./format.js";
 
 export function mountGrid(gridEl, { onAdd }){
   let dragId = null;
@@ -115,10 +116,4 @@ export function mountGrid(gridEl, { onAdd }){
 function pageLabel(f){
   if(f.pages === null) return "reading…";
   return f.pages + (f.pages === 1 ? " page" : " pages");
-}
-
-export function fileSize(bytes){
-  return bytes < 1048576
-    ? Math.max(1, Math.round(bytes / 1024)) + " KB"
-    : (bytes / 1048576).toFixed(1) + " MB";
 }

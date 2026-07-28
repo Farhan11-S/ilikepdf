@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Split PDF — IlikePDF</title>
+<meta name="description" content="Split a PDF into separate files by page range, pick individual pages, or burst every page — entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Split a PDF file</h1>
+  <p>Pull out page ranges, pick the pages you want, or turn every page into its own file.
+     It all happens in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF file</button>
+    <div class="hint">or drop a PDF anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your PDF</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <div class="page-grid" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>Split PDF</h2>
+    <p class="lede">Choose how to break this document up.</p>
+    <div class="divider"></div>
+
+    <div class="modes" role="radiogroup" aria-label="Split mode">
+      <label class="mode">
+        <input type="radio" name="mode" value="range" checked>
+        <span class="mode-text">
+          <span class="mode-title">Custom ranges</span>
+          <span class="mode-desc">Each range becomes its own PDF</span>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="mode" value="extract">
+        <span class="mode-text">
+          <span class="mode-title">Extract pages</span>
+          <span class="mode-desc">Pick pages, get one PDF of them</span>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="mode" value="every">
+        <span class="mode-text">
+          <span class="mode-title">Every page</span>
+          <span class="mode-desc">One PDF per page</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="mode-body" data-for="range">
+      <label class="field-label" for="rangeInput">Ranges</label>
+      <input class="field" type="text" id="rangeInput" value="1-1"
+             autocomplete="off" spellcheck="false" placeholder="1-4, 7, 9-12">
+      <p class="field-hint">Separate ranges with commas. A single number is one page.</p>
+    </div>
+
+    <div class="mode-body" data-for="extract" hidden>
+      <p class="field-hint">Click pages in the grid to include them.</p>
+      <div class="row-btns">
+        <button type="button" class="btn-quiet" id="selectAll">Select all</button>
+        <button type="button" class="btn-quiet" id="selectNone">Clear</button>
+      </div>
+    </div>
+
+    <div class="mode-body" data-for="every" hidden>
+      <p class="field-hint">Every page becomes its own PDF, delivered as a ZIP.</p>
+    </div>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Split PDF</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2 id="doneTitle">Your PDF has been split</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download</button>
+  <button class="linkish" id="restartBtn">Start over with a new file</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDF here</h2>
+    <p>Release to load it</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+
+<!-- UMD builds: classic scripts on purpose, so the globals exist before the module. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="module" src="js/tools/split.js"></script>
+</body>
+</html>

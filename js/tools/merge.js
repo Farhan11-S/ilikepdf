@@ -3,7 +3,8 @@
 import "../core/chrome.js";
 import * as store from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
-import { mountGrid, fileSize } from "../core/grid.js";
+import { mountGrid } from "../core/grid.js";
+import { fileSize } from "../core/format.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
