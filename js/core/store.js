@@ -25,6 +25,11 @@ export function isPdf(file){
   return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
 }
 
+/* PNG and JPEG only — the two formats pdf-lib can embed. */
+export function isImage(file){
+  return /^image\/(png|jpeg)$/.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
+}
+
 /* Reads every PDF in the list into memory and appends it.
    Returns what happened so the caller can decide which error to show. */
 export async function addFiles(fileList){

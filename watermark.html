@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watermark a PDF — IlikePDF</title>
+<meta name="description" content="Lay text or an image over every page of a PDF — tiled or centred, at any opacity — entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Watermark a PDF file</h1>
+  <p>Stamp text or a logo across every page, tiled or centred, as faint as you like.
+     It all happens in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF file</button>
+    <div class="hint">or drop a PDF anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your PDF</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <p class="canvas-hint">The red markers show roughly where the watermark lands.</p>
+    <div class="page-grid" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>Watermark</h2>
+    <p class="lede">Lay text or an image over every page.</p>
+    <div class="divider"></div>
+
+    <div class="modes" role="radiogroup" aria-label="Watermark type">
+      <label class="mode">
+        <input type="radio" name="mode" value="text" checked>
+        <span class="mode-text">
+          <span class="mode-title">Text</span>
+          <span class="mode-desc">A word or phrase, in Helvetica</span>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="mode" value="image">
+        <span class="mode-text">
+          <span class="mode-title">Image</span>
+          <span class="mode-desc">A PNG or JPG, a logo for instance</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="mode-body" data-for="text">
+      <label class="field-label" for="textInput">Text</label>
+      <input class="field" type="text" id="textInput" value="CONFIDENTIAL"
+             autocomplete="off" spellcheck="false" maxlength="60">
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="sizeInput">Size</label>
+          <input class="field" type="number" id="sizeInput" value="48" min="6" max="300" step="1">
+        </div>
+        <div>
+          <label class="field-label" for="colourInput">Colour</label>
+          <input class="field field-colour" type="color" id="colourInput" value="#e5322d">
+        </div>
+      </div>
+    </div>
+
+    <div class="mode-body" data-for="image" hidden>
+      <button type="button" class="btn-quiet" id="imagePick">Choose an image</button>
+      <p class="field-hint" id="imageName">PNG or JPG. Nothing is uploaded.</p>
+      <label class="field-label" for="scaleInput">Size on the page</label>
+      <input class="field" type="range" id="scaleInput" value="40" min="5" max="100" step="1">
+      <p class="field-hint"><span id="scaleOut">40</span>% of the page width</p>
+    </div>
+
+    <label class="field-label" for="opacityInput">Opacity</label>
+    <input class="field" type="range" id="opacityInput" value="25" min="5" max="100" step="1">
+    <p class="field-hint"><span id="opacityOut">25</span>%</p>
+
+    <label class="field-label" for="angleInput">Angle</label>
+    <input class="field" type="range" id="angleInput" value="45" min="-90" max="90" step="15">
+    <p class="field-hint"><span id="angleOut">45</span>°</p>
+
+    <label class="check-line">
+      <input type="checkbox" id="tiled">
+      <span>Repeat across the whole page</span>
+    </label>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Add watermark</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2>Your PDF is watermarked</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download watermarked PDF</button>
+  <button class="linkish" id="restartBtn">Start over with a new file</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDF here</h2>
+    <p>Release to load it</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+<input type="file" id="imageInput" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
+
+<script type="module" src="js/tools/watermark.js"></script>
+</body>
+</html>

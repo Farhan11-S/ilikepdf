@@ -59,7 +59,7 @@ export const TOOLS = [
     name: "Watermark",
     href: "watermark.html",
     blurb: "Lay text or an image over every page, tiled or centred.",
-    ready: false,
+    ready: true,
     nav: false,
     icon: stroke('<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5S12.5 5.5 12 3c-.5 2.5-2 4.9-4 6.5S5 13 5 15a7 7 0 0 0 7 7z"/>')
   },

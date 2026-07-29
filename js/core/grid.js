@@ -321,7 +321,15 @@ export function mountGrid(el, opts){
 
 /* Shows where a stamp — a page number, a watermark — will land, by drawing a
    label over the thumbnail in the same place. `stamp` is
-   {text, anchor, angle, tiled}; anchor is one of tl tc tr bl bc br c.
+   {text, anchor, angle, tiled}:
+
+     anchor  tl tc tr bl bc br c
+     angle   degrees counter-clockwise, matching pdf-lib
+     tiled   {cols, rows} to repeat evenly across the page instead
+
+   The caller owns the tile counts because it is the only one that knows how big
+   the mark is in points — the grid would otherwise be guessing, and a preview
+   with a different number of marks than the export is worse than no preview.
 
    This runs from decorate() rather than tile construction because a thumbnail
    arriving late replaces everything inside .thumb-box (see pump()), so anything
@@ -335,22 +343,34 @@ const ANCHORS = {
   c:  [.5, .5],
   bl: [0, 1],   bc: [.5, 1],   br: [1, 1]
 };
-const TILED = [0, .5, 1];
+
+/* Fractions of the page each mark sits at, as [fx, fy] pairs. */
+export function stampSpots(stamp){
+  const t = stamp.tiled;
+  if(!t) return [ANCHORS[stamp.anchor] || ANCHORS.bc];
+  const spots = [];
+  for(let r = 0; r < t.rows; r++){
+    for(let c = 0; c < t.cols; c++){
+      spots.push([(c + 0.5) / t.cols, (r + 0.5) / t.rows]);
+    }
+  }
+  return spots;
+}
 
 function applyStamp(box, canvas, stamp){
   if(!box) return;
-  const want = stamp && stamp.text ? (stamp.tiled ? TILED.length ** 2 : 1) : 0;
+  const spots = stamp && stamp.text ? stampSpots(stamp) : [];
   const marks = [...box.querySelectorAll(".stamp")];
 
-  for(let n = marks.length; n > want; n--) marks.pop().remove();
-  for(let n = marks.length; n < want; n++){
+  for(let n = marks.length; n > spots.length; n--) marks.pop().remove();
+  for(let n = marks.length; n < spots.length; n++){
     const el = document.createElement("span");
     el.className = "stamp";
     el.setAttribute("aria-hidden", "true");   // the panel already says this in words
     box.appendChild(el);
     marks.push(el);
   }
-  if(!want) return;
+  if(!spots.length) return;
 
   // Inset of the page within its box. offsetLeft is relative to .thumb-box,
   // which is position:relative for exactly this reason.
@@ -358,20 +378,19 @@ function applyStamp(box, canvas, stamp){
   const y0 = canvas ? canvas.offsetTop : 0;
   const w = canvas ? canvas.offsetWidth : box.clientWidth;
   const h = canvas ? canvas.offsetHeight : box.clientHeight;
-
-  const spots = stamp.tiled
-    ? TILED.flatMap(fy => TILED.map(fx => [fx, fy]))
-    : [ANCHORS[stamp.anchor] || ANCHORS.bc];
+  // Tiled marks sit on their centres; an anchored one pulls back inside the
+  // page so a corner anchor stays on the page rather than half off it.
+  const tiled = Boolean(stamp.tiled);
 
   spots.forEach(([fx, fy], k) => {
     const el = marks[k];
     el.textContent = stamp.text;
     el.style.left = (x0 + fx * w) + "px";
     el.style.top = (y0 + fy * h) + "px";
-    // Corner anchors pull back inside the page; the centre sits on its point.
-    el.style.transform =
-      `translate(${-fx * 100}%, ${-fy * 100}%) rotate(${-(stamp.angle || 0)}deg)`;
-    el.classList.toggle("tiled", !!stamp.tiled);
+    const [px, py] = tiled ? [50, 50] : [fx * 100, fy * 100];
+    // CSS rotates clockwise, pdf-lib counter-clockwise.
+    el.style.transform = `translate(${-px}%, ${-py}%) rotate(${-(stamp.angle || 0)}deg)`;
+    el.classList.toggle("tiled", tiled);
   });
 }
 

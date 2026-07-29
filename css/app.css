@@ -266,6 +266,9 @@ button.page-tile:not(:disabled){cursor:pointer}
 }
 .field:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(229,50,45,.14);outline:none}
 .field-hint{font-size:12px;color:var(--ink-soft);line-height:1.45;margin:7px 0 0}
+/* A hint reads as belonging to the control above it, so the next control needs
+   air or the two run together. */
+.field-hint+.field-label{margin-top:16px}
 .row-btns{display:flex;gap:8px;margin-top:10px}
 .btn-quiet{
   flex:1;border:1px solid var(--line);background:#fff;border-radius:var(--radius);
@@ -280,6 +283,9 @@ button.page-tile:not(:disabled){cursor:pointer}
 .field-row>*{flex:1;min-width:0}
 .check-line{display:flex;align-items:center;gap:9px;font-size:13px;margin:12px 0 4px;cursor:pointer}
 .check-line input{accent-color:var(--red);width:16px;height:16px;flex:none}
+/* A colour well is a swatch, not a text box — the .field padding would frame it. */
+.field-colour{padding:3px;height:42px;cursor:pointer}
+input[type="range"].field{padding:0;height:34px;accent-color:var(--red);border:0;background:none}
 
 /* Position picker: a miniature page with six corners to press. Reads as the
    thing it controls, which a dropdown of "Bottom right" would not. */

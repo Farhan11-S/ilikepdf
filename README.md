@@ -46,7 +46,7 @@ adding a row there and flipping `ready`.
 | Rotate PDF | `rotate.html` | done |
 | Organize pages | `organize.html` | done |
 | Page numbers | `page-numbers.html` | done |
-| Watermark | `watermark.html` | planned |
+| Watermark | `watermark.html` | done |
 | JPG to PDF | `jpg-to-pdf.html` | planned |
 | PDF to JPG | `pdf-to-jpg.html` | planned |
 
@@ -62,6 +62,7 @@ split.html          Split PDF
 rotate.html         Rotate PDF
 organize.html       Organize pages
 page-numbers.html   Add page numbers
+watermark.html      Watermark
 favicon.svg
 vendor/             the three libraries, committed
 scripts/vendor.mjs  refreshes vendor/ from node_modules
@@ -75,6 +76,8 @@ js/core/libs.js     loads the vendored libraries on demand
 js/core/busy.js     the bottom-right busy pill
 js/core/thumbs.js   pdf.js setup + page rendering
 js/core/place.js    anchors and rotated-page coordinates
+js/core/helvetica.js  text metrics, for measuring without pdf-lib
+js/core/images.js   reading images in and embedding them
 js/core/grid.js     the one grid: cards or page tiles, lazy, FLIP reorder
 js/core/panel.js    action panel, progress bar, error text
 js/core/ranges.js   "1-4, 7, 9-12" parsing
@@ -86,6 +89,7 @@ js/tools/split.js   split logic
 js/tools/rotate.js  rotate logic
 js/tools/organize.js reorder/delete logic
 js/tools/page-numbers.js  page number stamping
+js/tools/watermark.js     watermark stamping
 tests/              browser smoke tests + PDF fixtures
 ```
 

@@ -10,7 +10,8 @@ export function plural(n, word){
   return n + " " + word + (n === 1 ? "" : "s");
 }
 
-/* Turns "report.pdf" into "report" so outputs can be named after their source. */
+/* Turns "report.pdf" into "report" so outputs can be named after their source.
+   Images count too: JPG to PDF would otherwise produce "photo.jpg.pdf". */
 export function baseName(filename){
-  return filename.replace(/\.pdf$/i, "") || "document";
+  return filename.replace(/\.(pdf|jpe?g|png)$/i, "") || "document";
 }
