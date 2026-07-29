@@ -13,8 +13,9 @@ python3 -m http.server 8000
 # then open http://localhost:8000/merge.html
 ```
 
-Any static server works. The site has no build step and no runtime dependencies —
-the `package.json` here exists only for the tests below.
+Any static server works and the source needs no build step. Nothing is fetched
+from the network at runtime either: the three libraries are committed in
+`vendor/`. `package.json` pins their versions and drives the tests below.
 
 ## Testing
 
@@ -44,7 +45,7 @@ adding a row there and flipping `ready`.
 | Split PDF | `split.html` | done |
 | Rotate PDF | `rotate.html` | done |
 | Organize pages | `organize.html` | done |
-| Page numbers | `page-numbers.html` | planned |
+| Page numbers | `page-numbers.html` | done |
 | Watermark | `watermark.html` | planned |
 | JPG to PDF | `jpg-to-pdf.html` | planned |
 | PDF to JPG | `pdf-to-jpg.html` | planned |
@@ -60,14 +61,20 @@ merge.html          Merge PDF
 split.html          Split PDF
 rotate.html         Rotate PDF
 organize.html       Organize pages
+page-numbers.html   Add page numbers
 favicon.svg
+vendor/             the three libraries, committed
+scripts/vendor.mjs  refreshes vendor/ from node_modules
 css/tokens.css      design tokens, reset, button primitives
 css/app.css         header, footer, hero, tool grid, workspace, cards, panel
 js/core/tools.js    the tool registry
 js/core/chrome.js   injects the shared header + footer
 js/core/store.js    file list state + subscribe
 js/core/dropzone.js page-wide drag & drop + overlay
+js/core/libs.js     loads the vendored libraries on demand
+js/core/busy.js     the bottom-right busy pill
 js/core/thumbs.js   pdf.js setup + page rendering
+js/core/place.js    anchors and rotated-page coordinates
 js/core/grid.js     the one grid: cards or page tiles, lazy, FLIP reorder
 js/core/panel.js    action panel, progress bar, error text
 js/core/ranges.js   "1-4, 7, 9-12" parsing
@@ -78,6 +85,7 @@ js/tools/merge.js   merge logic
 js/tools/split.js   split logic
 js/tools/rotate.js  rotate logic
 js/tools/organize.js reorder/delete logic
+js/tools/page-numbers.js  page number stamping
 tests/              browser smoke tests + PDF fixtures
 ```
 
@@ -88,15 +96,28 @@ script runs — injecting the whole element would make the page jump on load.
 
 ## Libraries
 
-Both are loaded from cdnjs as classic scripts, so their globals exist before any
-module runs.
+All three live in `vendor/`, committed, so a fresh clone works offline. They are
+copied out of `node_modules` by `npm run vendor`; the versions are pinned exactly
+in `package.json`, which is what makes `package-lock.json` the real pin.
 
 - **pdf-lib 1.17.1** — all PDF *writing*. `PDFLib` global.
 - **pdf.js 3.11.174** — preview rendering only. `pdfjsLib` global.
-- **JSZip 3.10.1** — only on pages that can emit more than one file. `JSZip` global.
+- **JSZip 3.10.1** — only when a result is more than one file. `JSZip` global.
 
-pdf.js's worker is fetched and re-served as a blob URL, because a cross-origin
-worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
+They are **not** loaded up front. `js/core/libs.js` injects each one on first
+use and caches the promise, because half a megabyte of JavaScript blocking a
+page whose first act is "pick a file" bought nothing: pdf-lib is only needed at
+Export, JSZip only for a multi-file result, and pdf.js only once there is a
+document to preview. JPG→PDF never loads pdf.js at all.
+
+They stay classic scripts exposing globals on purpose — that is what the
+vendored UMD builds are, and the smoke tests read results back through those
+globals inside `page.evaluate`. `window.ilikepdf.loadPdfJs()` (and `loadZip`,
+`loadPdfLib`) is how anything outside the page awaits one.
+
+Vendoring also removed the runtime CDN dependency: a blocked or slow CDN used to
+take every tool down with it, and pdf.js's worker no longer needs the blob-URL
+workaround it carried only because it was cross-origin.
 
 ## Conventions
 
@@ -122,6 +143,9 @@ worker can be refused. `js/core/thumbs.js` keeps a fallback to the raw CDN URL.
 - Rotation is applied on top of a page's existing `/Rotate`, never assigned
   outright. A page can arrive already rotated, and the thumbnail you turned was
   showing that rotation.
+- Anything *drawn* onto a page has the same problem in reverse: pdf-lib draws in
+  the page's unrotated space, so a corner is not a fixed pair of coordinates.
+  Do the arithmetic in visual space and convert with `js/core/place.js`.
 - Use the tokens in `css/tokens.css`; don't invent new colours or radii.
 - `prefers-reduced-motion` disables all animation. Keep it that way.
 

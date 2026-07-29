@@ -7,7 +7,7 @@
   "scripts": {
     "serve": "python3 -m http.server 8000",
     "vendor": "node scripts/vendor.mjs",
-    "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs && node tests/rotate.smoke.mjs && node tests/organize.smoke.mjs"
+    "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs && node tests/rotate.smoke.mjs && node tests/organize.smoke.mjs && node tests/page-numbers.smoke.mjs"
   },
   "devDependencies": {
     "jszip": "3.10.1",

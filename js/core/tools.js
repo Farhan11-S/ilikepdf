@@ -50,7 +50,7 @@ export const TOOLS = [
     name: "Page numbers",
     href: "page-numbers.html",
     blurb: "Stamp page numbers anywhere on the page, in any size.",
-    ready: false,
+    ready: true,
     nav: false,
     icon: stroke('<path d="M9 3 7 21M17 3l-2 18M4 8.5h16M3 15.5h16"/>')
   },

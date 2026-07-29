@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add page numbers — IlikePDF</title>
+<meta name="description" content="Stamp page numbers onto a PDF — any corner, any size, starting wherever you like — entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Add page numbers to a PDF</h1>
+  <p>Pick a corner, a size and where the counting starts.
+     It all happens in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF file</button>
+    <div class="hint">or drop a PDF anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your PDF</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <p class="canvas-hint">The red marker shows roughly where each number lands.</p>
+    <div class="page-grid dim-unselected" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>Page numbers</h2>
+    <p class="lede">Choose where the number goes and what it says.</p>
+    <div class="divider"></div>
+
+    <span class="field-label" id="posLabel">Position</span>
+    <div class="anchor-pick" role="radiogroup" aria-labelledby="posLabel" id="anchorPick"></div>
+
+    <label class="field-label" for="formatSel">Format</label>
+    <select class="field" id="formatSel">
+      <option value="plain" selected>1</option>
+      <option value="word">Page 1</option>
+      <option value="ofn">1 of 5</option>
+    </select>
+
+    <div class="field-row">
+      <div>
+        <label class="field-label" for="sizeInput">Text size</label>
+        <input class="field" type="number" id="sizeInput" value="11" min="5" max="72" step="1">
+      </div>
+      <div>
+        <label class="field-label" for="marginInput">Margin</label>
+        <input class="field" type="number" id="marginInput" value="28" min="0" max="200" step="1">
+      </div>
+    </div>
+
+    <label class="field-label" for="startInput">First page is number</label>
+    <input class="field" type="number" id="startInput" value="1" min="0" max="9999" step="1">
+
+    <label class="check-line">
+      <input type="checkbox" id="skipFirst">
+      <span>Don't number the first page</span>
+    </label>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Add page numbers</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2>Your PDF is numbered</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download numbered PDF</button>
+  <button class="linkish" id="restartBtn">Start over with a new file</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDF here</h2>
+    <p>Release to load it</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+
+<script type="module" src="js/tools/page-numbers.js"></script>
+</body>
+</html>

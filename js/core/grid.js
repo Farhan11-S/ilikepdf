@@ -10,7 +10,7 @@
      onRemove   a ✕ in the corner
      onToggle   the whole tile becomes a button
      controls   per-tile buttons (rotate left/right, move ←/→)
-     describe   per-item decoration: selected, caption, tag, rotation
+     describe   per-item decoration: selected, caption, tag, rotation, stamp
      onAdd      a trailing "add more" button
 
    Two variants, differing only in shape: "card" (file-sized, name + meta
@@ -189,7 +189,7 @@ export function mountGrid(el, opts){
     return bar;
   }
 
-  /* describe(item, i) -> {selected, clickable, caption, tag, rotate} */
+  /* describe(item, i) -> {selected, clickable, caption, tag, rotate, stamp} */
   function decorate(tile, item, i){
     const s = describe ? (describe(item, i) || {}) : {};
 
@@ -209,8 +209,10 @@ export function mountGrid(el, opts){
     mark.textContent = s.tag ?? "";
     mark.hidden = s.tag === undefined || s.tag === null || s.tag === "";
 
+    const box = tile.querySelector(".thumb-box");
     const canvas = tile.querySelector("canvas");
-    if(canvas) applyRotation(canvas, tile.querySelector(".thumb-box"), s.rotate || 0);
+    if(canvas) applyRotation(canvas, box, s.rotate || 0);
+    applyStamp(box, canvas, s.stamp);
   }
 
   /* ---------- drag to reorder ---------- */
@@ -315,6 +317,62 @@ export function mountGrid(el, opts){
   }
 
   return { refresh, paint, reset };
+}
+
+/* Shows where a stamp — a page number, a watermark — will land, by drawing a
+   label over the thumbnail in the same place. `stamp` is
+   {text, anchor, angle, tiled}; anchor is one of tl tc tr bl bc br c.
+
+   This runs from decorate() rather than tile construction because a thumbnail
+   arriving late replaces everything inside .thumb-box (see pump()), so anything
+   built up front would be thrown away the moment the page finished rendering.
+
+   Positions follow the canvas, not the box: the canvas is letterboxed inside
+   its box by place-items:center, and a corner stamp pinned to the box corner
+   would sit off the page it is supposed to be on. */
+const ANCHORS = {
+  tl: [0, 0],   tc: [.5, 0],   tr: [1, 0],
+  c:  [.5, .5],
+  bl: [0, 1],   bc: [.5, 1],   br: [1, 1]
+};
+const TILED = [0, .5, 1];
+
+function applyStamp(box, canvas, stamp){
+  if(!box) return;
+  const want = stamp && stamp.text ? (stamp.tiled ? TILED.length ** 2 : 1) : 0;
+  const marks = [...box.querySelectorAll(".stamp")];
+
+  for(let n = marks.length; n > want; n--) marks.pop().remove();
+  for(let n = marks.length; n < want; n++){
+    const el = document.createElement("span");
+    el.className = "stamp";
+    el.setAttribute("aria-hidden", "true");   // the panel already says this in words
+    box.appendChild(el);
+    marks.push(el);
+  }
+  if(!want) return;
+
+  // Inset of the page within its box. offsetLeft is relative to .thumb-box,
+  // which is position:relative for exactly this reason.
+  const x0 = canvas ? canvas.offsetLeft : 0;
+  const y0 = canvas ? canvas.offsetTop : 0;
+  const w = canvas ? canvas.offsetWidth : box.clientWidth;
+  const h = canvas ? canvas.offsetHeight : box.clientHeight;
+
+  const spots = stamp.tiled
+    ? TILED.flatMap(fy => TILED.map(fx => [fx, fy]))
+    : [ANCHORS[stamp.anchor] || ANCHORS.bc];
+
+  spots.forEach(([fx, fy], k) => {
+    const el = marks[k];
+    el.textContent = stamp.text;
+    el.style.left = (x0 + fx * w) + "px";
+    el.style.top = (y0 + fy * h) + "px";
+    // Corner anchors pull back inside the page; the centre sits on its point.
+    el.style.transform =
+      `translate(${-fx * 100}%, ${-fy * 100}%) rotate(${-(stamp.angle || 0)}deg)`;
+    el.classList.toggle("tiled", !!stamp.tiled);
+  });
 }
 
 /* Turning a portrait thumbnail on its side makes it wider than its box, so a

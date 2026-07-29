@@ -145,6 +145,12 @@
 .thumb-box{
   height:200px;background:#f2f0f3;border-radius:4px;overflow:hidden;
   display:grid;place-items:center;
+  /* An explicit track, so the canvas's max-height:100% has a definite height to
+     resolve against. With the default auto row the row grew to the canvas's
+     intrinsic height instead, and a tall page was quietly cropped by the
+     overflow rather than scaled to fit. */
+  grid-template-rows:100%;grid-template-columns:100%;
+  position:relative;   /* stamps are positioned against the page inside it */
 }
 .thumb-box canvas{max-width:100%;max-height:100%;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 .thumb-box .placeholder{font-size:38px;color:#c3c0c7}
@@ -217,6 +223,18 @@ button.page-tile:not(:disabled){cursor:pointer}
    inside the thumbnail instead. */
 .page-grid.inset-marks .tile .mark{top:7px;right:7px}
 
+/* Preview of where a page number or watermark will land. Deliberately not a
+   faithful render — it's a marker saying "here", legible at 142px wide, which a
+   9pt page number scaled to thumbnail size would not be. */
+.stamp{
+  position:absolute;pointer-events:none;
+  max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:1px 4px;border-radius:3px;
+  background:rgba(229,50,45,.92);color:#fff;
+  font-size:9px;font-weight:700;line-height:1.5;letter-spacing:.2px;
+}
+.stamp.tiled{background:rgba(229,50,45,.62);font-size:8px;max-width:60%}
+
 .canvas-hint{font-size:13px;color:var(--ink-soft);margin:-12px 0 16px}
 .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 18px;font-size:12px;color:var(--ink-soft)}
 .legend-item{display:flex;align-items:center;gap:6px}
@@ -256,6 +274,32 @@ button.page-tile:not(:disabled){cursor:pointer}
 }
 .btn-quiet:hover:not(:disabled){border-color:var(--red);color:var(--red)}
 .btn-quiet:disabled{color:#b3b1b9;cursor:not-allowed}
+
+/* Two short fields side by side — size and margin, both a couple of digits. */
+.field-row{display:flex;gap:8px;margin-bottom:14px}
+.field-row>*{flex:1;min-width:0}
+.check-line{display:flex;align-items:center;gap:9px;font-size:13px;margin:12px 0 4px;cursor:pointer}
+.check-line input{accent-color:var(--red);width:16px;height:16px;flex:none}
+
+/* Position picker: a miniature page with six corners to press. Reads as the
+   thing it controls, which a dropdown of "Bottom right" would not. */
+.anchor-pick{
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);
+  gap:4px;width:112px;aspect-ratio:3/2.4;margin:0 0 16px;
+  border:1px solid var(--line);border-radius:var(--radius);padding:4px;background:#fff;
+}
+.anchor-pick button{
+  border:0;background:#f2f0f3;border-radius:4px;padding:0;
+  display:grid;place-items:center;transition:background .15s;
+}
+.anchor-pick button i{
+  width:7px;height:7px;border-radius:2px;background:#bfbcc4;
+  display:block;transition:background .15s,transform .15s;
+}
+.anchor-pick button:hover{background:#eae7ec}
+.anchor-pick button:hover i{background:var(--ink-soft)}
+.anchor-pick button[aria-checked="true"]{background:#fff5f4}
+.anchor-pick button[aria-checked="true"] i{background:var(--red);transform:scale(1.3)}
 
 .btn-pair{display:flex;gap:8px}
 .btn-big{
