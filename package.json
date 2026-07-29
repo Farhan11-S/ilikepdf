@@ -2,13 +2,17 @@
   "name": "ilikepdf",
   "private": true,
   "version": "0.1.0",
-  "description": "Client-side PDF tools. The site itself needs no install \u2014 this file exists only for the browser smoke tests.",
+  "description": "Client-side PDF tools. The site itself needs no install — this file pins the vendored libraries and drives the browser smoke tests.",
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8000",
+    "vendor": "node scripts/vendor.mjs",
     "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs && node tests/rotate.smoke.mjs && node tests/organize.smoke.mjs"
   },
   "devDependencies": {
+    "jszip": "3.10.1",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "3.11.174",
     "playwright-core": "^1.56.1"
   }
 }

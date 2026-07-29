@@ -20,16 +20,23 @@ export const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "ilikepdf-"));
 
 function findChrome(){
   if(process.env.CHROME) return process.env.CHROME;
-  const root = path.join(os.homedir(), ".cache/ms-playwright");
-  if(!fs.existsSync(root)) return undefined;   // let playwright-core try its default
-  for(const dir of fs.readdirSync(root).filter(d => d.startsWith("chromium-")).sort().reverse()){
-    for(const rel of ["chrome-linux64/chrome", "chrome-linux/chrome",
-                      "chrome-mac/Chromium.app/Contents/MacOS/Chromium"]){
-      const p = path.join(root, dir, rel);
-      if(fs.existsSync(p)) return p;
+  // PLAYWRIGHT_BROWSERS_PATH first: sandboxes and CI images pre-install browsers
+  // there, and their build number rarely matches whatever playwright-core wants
+  // by default — which fails with "run npx playwright install" on a machine that
+  // already has a perfectly good Chromium.
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH,
+                 path.join(os.homedir(), ".cache/ms-playwright")].filter(Boolean);
+  for(const root of roots){
+    if(!fs.existsSync(root)) continue;
+    for(const dir of fs.readdirSync(root).filter(d => d.startsWith("chromium-")).sort().reverse()){
+      for(const rel of ["chrome-linux64/chrome", "chrome-linux/chrome",
+                        "chrome-mac/Chromium.app/Contents/MacOS/Chromium"]){
+        const p = path.join(root, dir, rel);
+        if(fs.existsSync(p)) return p;
+      }
     }
   }
-  return undefined;
+  return undefined;   // let playwright-core try its default
 }
 
 /* Opens a page that records every console error, uncaught exception, and 4xx/5xx

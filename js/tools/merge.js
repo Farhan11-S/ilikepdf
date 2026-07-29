@@ -8,6 +8,7 @@ import { fileSize, plural } from "../core/format.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
+import { loadPdfLib } from "../core/libs.js";
 
 const $ = id => document.getElementById(id);
 
@@ -89,7 +90,7 @@ panel.onAction(async () => {
   panel.setBusy(true, "Merging…");
   panel.setError("");
   try{
-    const { PDFDocument } = PDFLib;
+    const { PDFDocument } = await loadPdfLib();
     const out = await PDFDocument.create();
     for(let i = 0; i < files.length; i++){
       // .slice() — pdf-lib detaches the buffer, and we may merge again.

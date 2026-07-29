@@ -12,6 +12,7 @@ import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
+import { loadPdfLib } from "../core/libs.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
 const $ = id => document.getElementById(id);
@@ -190,7 +191,7 @@ panel.onAction(async () => {
   panel.setBusy(true, "Saving…");
   panel.setError("");
   try{
-    const { PDFDocument } = PDFLib;
+    const { PDFDocument } = await loadPdfLib();
     const out = await PDFDocument.create();
 
     // Copy in one pass per source rather than one per page: copyPages builds a

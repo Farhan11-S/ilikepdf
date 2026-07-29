@@ -11,6 +11,7 @@ import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
+import { loadPdfLib } from "../core/libs.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
 const $ = id => document.getElementById(id);
@@ -132,7 +133,7 @@ panel.onAction(async () => {
   panel.setBusy(true, "Rotating…");
   panel.setError("");
   try{
-    const { PDFDocument, degrees } = PDFLib;
+    const { PDFDocument, degrees } = await loadPdfLib();
     const out = await PDFDocument.load(src.bytes.slice(), { ignoreEncryption: true });
 
     // Add to what's already there — a page can arrive with a /Rotate of its own,

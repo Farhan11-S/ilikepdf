@@ -14,6 +14,7 @@ import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
+import { loadPdfLib, loadZip } from "../core/libs.js";
 import { parseRanges, toIndices } from "../core/ranges.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
@@ -217,7 +218,7 @@ panel.onAction(async () => {
   panel.setBusy(true, "Splitting…");
   panel.setError("");
   try{
-    const { PDFDocument } = PDFLib;
+    const { PDFDocument } = await loadPdfLib();
     // Load the source once and copy out of it repeatedly — reloading per output
     // would be the slow part of "every page" on a big document.
     const srcDoc = await PDFDocument.load(src.bytes.slice(), { ignoreEncryption: true });
@@ -240,6 +241,8 @@ panel.onAction(async () => {
         count: 1
       };
     }else{
+      // Only ever loaded when the result really is more than one file.
+      const JSZip = await loadZip();
       const zip = new JSZip();
       built.forEach(f => zip.file(f.name, f.bytes));
       result = {

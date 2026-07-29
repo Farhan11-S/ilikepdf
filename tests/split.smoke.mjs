@@ -11,6 +11,7 @@ const { browser, page, errors } = await launch();
    of every page, so we can prove which source pages actually came out. */
 async function inspect(bytes){
   return page.evaluate(async arr => {
+    const pdfjsLib = await window.ilikepdf.loadPdfJs();
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
     const pages = [];
     for(let i = 1; i <= doc.numPages; i++){
@@ -96,8 +97,10 @@ let got = await download();
 check("zip filename is named after the source", got.name === "gamma_split.zip", got.name);
 check("zip is non-empty", got.bytes.length > 0, got.bytes.length + " bytes");
 check("file is really a ZIP", got.bytes.subarray(0, 2).toString() === "PK");
-// Unpack in the browser with the JSZip the page already has.
+// Unpack in the browser, with the same vendored JSZip the page uses.
 const entries = await page.evaluate(async arr => {
+  const JSZip = await window.ilikepdf.loadZip();
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
   const zip = await JSZip.loadAsync(new Uint8Array(arr));
   const names = Object.keys(zip.files).sort();
   const out = [];
@@ -177,6 +180,8 @@ await page.waitForSelector("#done.on", { timeout: 20000 });
 got = await download();
 check("every-page output is a ZIP", got.name === "gamma_split.zip" && got.bytes.subarray(0, 2).toString() === "PK");
 const burst = await page.evaluate(async arr => {
+  const JSZip = await window.ilikepdf.loadZip();
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
   const zip = await JSZip.loadAsync(new Uint8Array(arr));
   const names = Object.keys(zip.files).sort();
   const counts = [];

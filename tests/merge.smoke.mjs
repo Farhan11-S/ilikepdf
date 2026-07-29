@@ -110,6 +110,7 @@ check("downloaded file is a PDF", bytes.subarray(0, 5).toString() === "%PDF-");
 // pdf-lib saves with object streams, so page dicts aren't greppable in plaintext.
 // Parse it back with pdf.js instead.
 const parsed = await page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
   const txt = await (await doc.getPage(1)).getTextContent();
   return { pages: doc.numPages, first: txt.items.map(i => i.str).join("") };

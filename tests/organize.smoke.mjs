@@ -10,6 +10,7 @@ const { browser, page, errors } = await launch();
    way to prove the working set's order actually reached the output. */
 async function textOf(bytes){
   return page.evaluate(async arr => {
+    const pdfjsLib = await window.ilikepdf.loadPdfJs();
     const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
     const out = [];
     for(let i = 1; i <= doc.numPages; i++){

@@ -314,6 +314,44 @@ button.page-tile:not(:disabled){cursor:pointer}
   .workspace.on ~ .site-footer{padding-bottom:120px}
 }
 
+/* ---------- busy pill ---------- */
+/* Libraries load on demand, so there are short moments where the page is working
+   with nothing on screen to show it. This is that. Bottom-right, out of the way
+   of the panel's action button. */
+.loading-pill{
+  position:fixed;right:20px;bottom:20px;z-index:60;
+  display:none;align-items:center;gap:10px;
+  background:var(--ink);color:#fff;border-radius:99px;
+  padding:10px 16px;font-size:13px;font-weight:600;
+  box-shadow:var(--shadow-md);
+  animation:pillIn .2s ease;
+}
+.loading-pill.on{display:flex}
+.loading-pill .spin{
+  width:14px;height:14px;flex:none;border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pillIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* tokens.css kills every animation under prefers-reduced-motion, which would
+   leave a frozen ring reading as "stuck". Give those users a solid dot instead —
+   the pill's presence is the signal, not its movement. */
+@media(prefers-reduced-motion:reduce){
+  .loading-pill .spin{border-color:#fff;border-top-color:#fff}
+}
+/* The panel owns the bottom-right corner whenever a workspace is open, and the
+   pill must never cover the action button — that button is what the user just
+   pressed. Above 900px the panel is a 320px right rail, so step left of it;
+   below, it's a bottom sheet, so go to the top instead. On the hero and done
+   screens there is no panel and the corner is free. */
+@media(min-width:901px){
+  .workspace.on ~ .loading-pill{right:340px}
+}
+@media(max-width:900px){
+  .workspace.on ~ .loading-pill{bottom:auto;top:76px}
+}
+
 /* ---------- done screen ---------- */
 .done{display:none;text-align:center;padding:70px 24px 100px;width:100%;max-width:640px;margin:0 auto}
 .done.on{display:block;animation:popIn .3s ease}
