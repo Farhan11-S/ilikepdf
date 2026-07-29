@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF to JPG — IlikePDF</title>
+<meta name="description" content="Save PDF pages as JPG or PNG images at the size you choose, zipped for download — entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Turn a PDF into images</h1>
+  <p>Every page, or just the ones you pick, saved as JPG or PNG.
+     It all happens in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select PDF file</button>
+    <div class="hint">or drop a PDF anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+  <p class="hero-note">JPG and PNG are the only conversions here. Turning a PDF into
+     Word or Excel needs a server to do the work, and this site has none —
+     nothing you load ever leaves your device.</p>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your PDF</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <div class="page-grid dim-unselected" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>PDF to JPG</h2>
+    <p class="lede">Choose which pages, and how big.</p>
+    <div class="divider"></div>
+
+    <div class="modes" role="radiogroup" aria-label="Which pages">
+      <label class="mode">
+        <input type="radio" name="mode" value="all" checked>
+        <span class="mode-text">
+          <span class="mode-title">Every page</span>
+          <span class="mode-desc">One image per page</span>
+        </span>
+      </label>
+      <label class="mode">
+        <input type="radio" name="mode" value="pick">
+        <span class="mode-text">
+          <span class="mode-title">Pick pages</span>
+          <span class="mode-desc">Click the pages you want</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="mode-body" data-for="pick" hidden>
+      <p class="field-hint">Click pages in the grid to include them.</p>
+      <div class="row-btns">
+        <button type="button" class="btn-quiet" id="selectAll">Select all</button>
+        <button type="button" class="btn-quiet" id="selectNone">Clear</button>
+      </div>
+    </div>
+
+    <label class="field-label" for="formatSel">Format</label>
+    <select class="field" id="formatSel">
+      <option value="jpeg" selected>JPG</option>
+      <option value="png">PNG</option>
+    </select>
+
+    <label class="field-label" for="scaleSel">Size</label>
+    <select class="field" id="scaleSel">
+      <option value="1">Actual size (1×)</option>
+      <option value="2" selected>Double (2×)</option>
+      <option value="3">Triple (3×)</option>
+    </select>
+
+    <div id="qualityWrap">
+      <label class="field-label" for="qualityInput">JPG quality</label>
+      <input class="field" type="range" id="qualityInput" value="85" min="40" max="100" step="5">
+      <p class="field-hint"><span id="qualityOut">85</span>%</p>
+    </div>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Convert to JPG</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2 id="doneTitle">Your images are ready</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download</button>
+  <button class="linkish" id="restartBtn">Start over with a new file</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">📄</span>
+    <h2>Drop your PDF here</h2>
+    <p>Release to load it</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+
+<script type="module" src="js/tools/pdf-to-jpg.js"></script>
+</body>
+</html>

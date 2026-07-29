@@ -34,6 +34,12 @@
 .dropzone.hot{border-color:var(--red);background:#fff5f4;transform:scale(1.01)}
 .dropzone .hint{margin-top:18px;font-size:14px;color:var(--ink-soft)}
 
+/* Says what a tool can't do, before someone loads a file expecting otherwise. */
+.hero-note{
+  max-width:520px;margin:26px auto 0;
+  font-size:13px;line-height:1.6;color:var(--ink-soft);text-wrap:pretty;
+}
+
 /* A directory page leads straight into the grid, so it needs less air below. */
 .hero.compact{padding:56px 24px 34px}
 .hero.compact p{margin-bottom:0}

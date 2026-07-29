@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JPG to PDF — IlikePDF</title>
+<meta name="description" content="Turn JPG or PNG images into a PDF, one image per page, in the order you choose — entirely in your browser.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Header and footer are filled in by js/core/chrome.js. -->
+<header class="site-header"></header>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <h1>Turn images into a PDF</h1>
+  <p>JPG or PNG in, one image per page, in the order you drag them.
+     It all happens in your browser — no file ever leaves your device.</p>
+  <div class="dropzone" id="dropzone">
+    <button class="btn-primary" id="pickBtn">Select images</button>
+    <div class="hint">or drop JPG and PNG files anywhere on this page</div>
+  </div>
+  <div class="error" id="heroError"></div>
+  <p class="hero-note">JPG and PNG are the only conversions here. Turning a PDF into
+     Word or Excel needs a server to do the work, and this site has none —
+     nothing you load ever leaves your device.</p>
+</section>
+
+<!-- WORKSPACE -->
+<section class="workspace" id="workspace">
+  <div class="canvas">
+    <div class="canvas-head">
+      <h2 id="srcName">Your images</h2>
+      <span id="srcMeta"></span>
+    </div>
+    <p class="canvas-hint">Drag to reorder. The order here is the page order.</p>
+    <div class="page-grid" id="pageGrid"></div>
+  </div>
+
+  <aside class="panel" id="panel">
+    <h2>JPG to PDF</h2>
+    <p class="lede">One image per page, in the order shown.</p>
+    <div class="divider"></div>
+
+    <label class="field-label" for="sizeSel">Page size</label>
+    <select class="field" id="sizeSel">
+      <option value="fit" selected>Fit the image</option>
+      <option value="a4">A4</option>
+      <option value="letter">Letter</option>
+    </select>
+    <p class="field-hint" id="sizeHint">Each page is exactly the size of its image.</p>
+
+    <label class="field-label" for="marginInput">Margin</label>
+    <input class="field" type="number" id="marginInput" value="0" min="0" max="200" step="1">
+
+    <label class="check-line">
+      <input type="checkbox" id="autoRotate" checked>
+      <span>Turn wide images sideways</span>
+    </label>
+
+    <div class="row-btns">
+      <button type="button" class="btn-quiet" id="addBtn">Add more images</button>
+      <button type="button" class="btn-quiet" id="clearBtn">Clear</button>
+    </div>
+
+    <div class="summary"></div>
+    <div class="spacer"></div>
+    <button class="btn-action" disabled>Add an image first</button>
+    <div class="bar"><i></i></div>
+    <div class="error"></div>
+  </aside>
+</section>
+
+<!-- DONE -->
+<section class="done" id="done">
+  <div class="check">✓</div>
+  <h2>Your PDF is ready</h2>
+  <p id="doneMeta"></p>
+  <button class="btn-primary" id="downloadBtn">Download PDF</button>
+  <button class="linkish" id="restartBtn">Start over with new images</button>
+</section>
+
+<!-- DRAG OVERLAY -->
+<div class="drop-overlay" id="overlay">
+  <div class="frame">
+    <span class="icon">🖼️</span>
+    <h2>Drop your images here</h2>
+    <p>Release to add them</p>
+  </div>
+</div>
+
+<footer class="site-footer"></footer>
+
+<input type="file" id="fileInput" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple hidden>
+
+<script type="module" src="js/tools/jpg-to-pdf.js"></script>
+</body>
+</html>

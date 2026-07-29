@@ -68,7 +68,7 @@ export const TOOLS = [
     name: "JPG to PDF",
     href: "jpg-to-pdf.html",
     blurb: "Turn photos into a PDF, one image per page.",
-    ready: false,
+    ready: true,
     nav: false,
     icon: stroke('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>')
   },
@@ -77,7 +77,7 @@ export const TOOLS = [
     name: "PDF to JPG",
     href: "pdf-to-jpg.html",
     blurb: "Save every page as a JPG image, zipped up for download.",
-    ready: false,
+    ready: true,
     nav: false,
     icon: stroke('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>')
   }

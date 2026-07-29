@@ -49,8 +49,12 @@ check("unbuilt tools are not links", (await page.locator("a.tool-card.soon").cou
 check("unbuilt tools are not keyboard focusable", await page.evaluate(() =>
   [...document.querySelectorAll(".tool-card.soon")].every(c => c.tabIndex < 0)));
 
+/* Two phrasings, and which one is right is decided by the registry: "5 of 8"
+   while there's work left, "8 tools" once there isn't. Asserting on the wrong
+   one is how a green suite would tell you a shipped tool is still "soon". */
 check("tool count is honest about progress",
-  (await page.locator("#toolCount").textContent()).includes(`${READY.length} of ${TOOLS.length}`),
+  (await page.locator("#toolCount").textContent()).includes(
+    SOON.length ? `${READY.length} of ${TOOLS.length}` : `${TOOLS.length} tools`),
   await page.locator("#toolCount").textContent());
 
 // No tool may be advertised that pdf-lib cannot actually deliver.

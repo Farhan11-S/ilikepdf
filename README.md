@@ -47,8 +47,8 @@ adding a row there and flipping `ready`.
 | Organize pages | `organize.html` | done |
 | Page numbers | `page-numbers.html` | done |
 | Watermark | `watermark.html` | done |
-| JPG to PDF | `jpg-to-pdf.html` | planned |
-| PDF to JPG | `pdf-to-jpg.html` | planned |
+| JPG to PDF | `jpg-to-pdf.html` | done |
+| PDF to JPG | `pdf-to-jpg.html` | done |
 
 There is deliberately no Compress or Office-conversion tool — see the last
 section for why.
@@ -63,6 +63,8 @@ rotate.html         Rotate PDF
 organize.html       Organize pages
 page-numbers.html   Add page numbers
 watermark.html      Watermark
+jpg-to-pdf.html     JPG to PDF
+pdf-to-jpg.html     PDF to JPG
 favicon.svg
 vendor/             the three libraries, committed
 scripts/vendor.mjs  refreshes vendor/ from node_modules
@@ -90,6 +92,8 @@ js/tools/rotate.js  rotate logic
 js/tools/organize.js reorder/delete logic
 js/tools/page-numbers.js  page number stamping
 js/tools/watermark.js     watermark stamping
+js/tools/jpg-to-pdf.js    images in, one page each
+js/tools/pdf-to-jpg.js    pages out, as JPG or PNG
 tests/              browser smoke tests + PDF fixtures
 ```
 

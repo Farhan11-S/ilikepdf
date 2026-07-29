@@ -24,7 +24,7 @@ const files = await page.evaluate(async () => {
     const g = x.createLinearGradient(0, 0, w, h);
     g.addColorStop(0, `hsl(${hue},70%,55%)`); g.addColorStop(1, `hsl(${hue + 60},70%,40%)`);
     x.fillStyle = g; x.fillRect(0, 0, w, h);
-    x.fillStyle = "#fff"; x.font = `bold ${Math.round(h / 3)}px sans-serif`;
+    x.fillStyle = "#fff"; x.font = `bold ${Math.round(Math.min(w, h) / 4)}px sans-serif`;
     x.textAlign = "center"; x.textBaseline = "middle";
     x.fillText(`${w}x${h}`, w / 2, h / 2);
     return c;
