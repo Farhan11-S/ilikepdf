@@ -74,7 +74,9 @@ check("dragging class cleared after dragend", (await page.locator(".card.draggin
 // --- 5. non-PDF rejection --------------------------------------------------
 await page.setInputFiles("#fileInput", [`${FIX}/notes.txt`]);
 await page.waitForTimeout(200);
-check("non-PDF shows error", (await page.locator(".error").isVisible()) && (await page.locator(".error").textContent()).includes("aren't PDFs"));
+check("non-PDF shows error in the panel",
+  (await page.locator(".panel .error").isVisible())
+  && (await page.locator(".panel .error").textContent()).includes("aren't PDFs"));
 check("non-PDF did not add a card", (await page.locator(".card").count()) === 3);
 
 // --- 6. remove -------------------------------------------------------------
@@ -143,6 +145,62 @@ const outline = await page.evaluate(() => {
   return { tag: el.tagName, outline: s.outlineWidth + " " + s.outlineStyle };
 });
 check("focus ring visible on tab", outline.outline.includes("3px"), JSON.stringify(outline));
+
+// --- 11b. errors before a file is loaded ----------------------------------
+/* The panel isn't on screen yet, so an error sent there is invisible. */
+await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", [`${FIX}/notes.txt`]);
+await page.waitForTimeout(250);
+check("a non-PDF is reported on the hero when nothing is loaded",
+  (await page.locator("#heroError").isVisible())
+  && (await page.locator("#heroError").textContent()).includes("aren't PDFs"));
+check("and the hero is still the thing on screen", await page.locator("#hero").isVisible());
+
+/* An empty file is not the same problem as a corrupt one, and saying so saves
+   someone hunting for a password that was never set. */
+await page.evaluate(() => {
+  const dt = new DataTransfer();
+  dt.items.add(new File([], "empty.pdf", { type: "application/pdf" }));
+  document.getElementById("fileInput").files = dt.files;
+  document.getElementById("fileInput").dispatchEvent(new Event("change"));
+});
+await page.waitForTimeout(250);
+check("an empty PDF says it's empty, and names it",
+  (await page.locator("#heroError").textContent()).includes("empty.pdf")
+  && (await page.locator("#heroError").textContent()).includes("empty"),
+  await page.locator("#heroError").textContent());
+
+// --- 11c. keyboard reordering ----------------------------------------------
+/* Drag is mouse-only and the ← → buttons only appear under hover:none, so
+   without this the grid cannot be reordered from a keyboard at all. */
+await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/beta.pdf`, `${FIX}/gamma.pdf`]);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".card").length === 3);
+check("a reorderable card is a tab stop",
+  await page.evaluate(() => document.querySelector(".card").tabIndex === 0));
+check("and says how to move it",
+  (await page.locator(".card").first().getAttribute("aria-label")).includes("arrow keys"),
+  await page.locator(".card").first().getAttribute("aria-label"));
+
+await page.locator(".card").first().focus();
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(150);
+check("arrow right moves the focused card along",
+  (await names()).join(",") === "beta.pdf,alpha.pdf,gamma.pdf", (await names()).join(","));
+check("focus follows the card it moved", await page.evaluate(() =>
+  document.activeElement.classList.contains("card")
+  && document.activeElement.querySelector(".name").textContent === "alpha.pdf"),
+  await page.evaluate(() => document.activeElement.textContent));
+
+await page.keyboard.press("ArrowLeft");
+await page.waitForTimeout(150);
+check("arrow left moves it back",
+  (await names()).join(",") === "alpha.pdf,beta.pdf,gamma.pdf", (await names()).join(","));
+await page.keyboard.press("ArrowLeft");
+await page.waitForTimeout(150);
+check("arrow left at the start does nothing",
+  (await names()).join(",") === "alpha.pdf,beta.pdf,gamma.pdf");
 
 // --- 12. narrow viewport ---------------------------------------------------
 await page.setViewportSize({ width: 375, height: 800 });

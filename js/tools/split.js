@@ -8,7 +8,7 @@
    One output downloads as a PDF. More than one is zipped. */
 
 import "../core/chrome.js";
-import { isPdf } from "../core/store.js";
+import { inspect, isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
@@ -136,6 +136,11 @@ async function intake(fileList){
     return;
   }
   const file = pdfs[0];
+  const { error, warning } = inspect(file);
+  if(error){
+    fail(error);
+    return;
+  }
   try{
     const bytes = new Uint8Array(await file.arrayBuffer());
     doc = await thumbs.open(bytes);
@@ -149,7 +154,8 @@ async function intake(fileList){
   picked = new Set();
   rangeInput.value = "1-" + src.pages;
   rangeInput.max = src.pages;
-  note = pdfs.length > 1 ? `Split works on one PDF at a time — using ${src.name}.` : "";
+  note = [warning, pdfs.length > 1 ? `Split works on one PDF at a time — using ${src.name}.` : ""]
+    .filter(Boolean).join(" ");
   panel.setError(note);
 
   $("srcName").textContent = src.name;

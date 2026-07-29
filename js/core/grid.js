@@ -6,7 +6,7 @@
 
    What it provides, all optional:
      render     lazy thumbnails via IntersectionObserver, one at a time
-     reorder    drag to reorder, animated with FLIP
+     reorder    drag, arrow keys or ← → buttons, animated with FLIP
      onRemove   a ✕ in the corner
      onToggle   the whole tile becomes a button
      controls   per-tile buttons (rotate left/right, move ←/→)
@@ -164,7 +164,7 @@ export function mountGrid(el, opts){
     mark.setAttribute("aria-hidden", "true");
     tile.appendChild(mark);
 
-    if(reorder) makeDraggable(tile, item);
+    if(reorder) makeMovable(tile, item, i);
     decorate(tile, item, i);
     return tile;
   }
@@ -215,10 +215,38 @@ export function mountGrid(el, opts){
     applyStamp(box, canvas, s.stamp);
   }
 
-  /* ---------- drag to reorder ---------- */
+  /* ---------- reordering: by drag, by touch buttons, by keyboard ---------- */
 
-  function makeDraggable(tile, item){
+  function makeMovable(tile, item, i){
     tile.draggable = true;
+
+    /* A reorderable tile is a div — it can't be a button, because it already
+       holds buttons — so it needs a tab stop of its own or the whole
+       interaction is mouse-and-touch only. The ← → buttons underneath are
+       touch-only (hover:none), so they are not the keyboard path either. */
+    tile.tabIndex = 0;
+    tile.setAttribute("aria-label",
+      `${item.label ?? "Item"}, position ${i + 1} of ${items().length}. ` +
+      "Use the arrow keys to move it.");
+
+    tile.addEventListener("keydown", ev => {
+      const dir = ev.key === "ArrowRight" || ev.key === "ArrowDown" ? 1
+                : ev.key === "ArrowLeft"  || ev.key === "ArrowUp"   ? -1
+                : 0;
+      if(!dir || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+
+      const list = items();
+      const from = list.findIndex(x => String(x.id) === String(item.id));
+      const to = from + dir;
+      if(from === -1 || to < 0 || to >= list.length) return;
+
+      ev.preventDefault();
+      onReorderStart?.();      // one undo step per press, same as one drag
+      reorder(from, to);
+      // The caller refreshed the grid, so this element is gone; follow the
+      // item to its new tile or focus lands back on the document.
+      find(item.id)?.focus();
+    });
 
     tile.addEventListener("dragstart", ev => {
       dragId = item.id;

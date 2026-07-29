@@ -8,7 +8,7 @@
    output order, drag to reorder, ✕ to remove. */
 
 import "../core/chrome.js";
-import { isImage } from "../core/store.js";
+import { inspect, isImage } from "../core/store.js";
 import { readImage, renderImage, embedImage } from "../core/images.js";
 import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
@@ -104,7 +104,11 @@ async function intake(fileList){
   }
 
   const broken = [];
+  const notes = [];
   for(const file of pics){
+    const { error, warning } = inspect(file);
+    if(error){ notes.push(error); continue; }
+    if(warning) notes.push(warning);
     try{
       images.push({ id: ++uid, ...await readImage(file) });
     }catch(err){
@@ -114,12 +118,17 @@ async function intake(fileList){
   }
 
   if(!images.length){
-    fail(`"${broken.join('", "')}" couldn't be read as an image.`);
+    fail(broken.length
+      ? `"${broken.join('", "')}" couldn't be read as an image.`
+      : notes.join(" "));
     return;
   }
 
   const skipped = [...broken, ...files.filter(f => !isImage(f)).map(f => f.name)];
-  panel.setError(skipped.length ? `Skipped ${skipped.join(", ")} — not a readable JPG or PNG.` : "");
+  panel.setError([
+    skipped.length ? `Skipped ${skipped.join(", ")} — not a readable JPG or PNG.` : "",
+    ...notes
+  ].filter(Boolean).join(" "));
 
   showWorkspace();
   grid.refresh();

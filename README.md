@@ -146,14 +146,21 @@ workaround it carried only because it was cross-origin.
   HTML, and passing both throws.
 - Rendered thumbnails are cached by item id, so reordering never re-renders.
   `reset()` clears the cache when a different document is loaded.
-- Anything reorderable by drag needs a touch fallback: HTML5 drag doesn't fire on
-  touch devices. Merge and Organize both use ← → buttons shown under `hover:none`.
+- Anything reorderable needs three ways in, because each one leaves someone out:
+  HTML5 drag (mouse), ← → buttons shown under `hover:none` (touch), and arrow
+  keys on the focused tile (keyboard). `grid.js` provides all three whenever
+  `reorder` is passed; a tool doesn't opt in separately.
 - Rotation is applied on top of a page's existing `/Rotate`, never assigned
   outright. A page can arrive already rotated, and the thumbnail you turned was
   showing that rotation.
 - Anything *drawn* onto a page has the same problem in reverse: pdf-lib draws in
   the page's unrotated space, so a corner is not a fixed pair of coordinates.
   Do the arithmetic in visual space and convert with `js/core/place.js`.
+- A file is checked with `store.inspect()` before anything tries to parse it:
+  empty files get told they're empty rather than "possibly password-protected",
+  and very large ones get a warning, never a refusal.
+- Errors raised before a document is loaded go to `#heroError`, not the panel —
+  the panel isn't on screen yet. `fail()` in each tool picks the right one.
 - Use the tokens in `css/tokens.css`; don't invent new colours or radii.
 - `prefers-reduced-motion` disables all animation. Keep it that way.
 

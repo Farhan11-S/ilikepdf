@@ -7,7 +7,7 @@
    centre point turned back into a draw origin. */
 
 import "../core/chrome.js";
-import { isImage, isPdf } from "../core/store.js";
+import { inspect, isImage, isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { readImage, embedImage } from "../core/images.js";
 import { mountGrid, stampSpots } from "../core/grid.js";
@@ -162,6 +162,11 @@ async function intake(fileList){
     return;
   }
   const file = pdfs[0];
+  const { error, warning } = inspect(file);
+  if(error){
+    fail(error);
+    return;
+  }
   try{
     const bytes = new Uint8Array(await file.arrayBuffer());
     doc = await thumbs.open(bytes);
@@ -175,7 +180,8 @@ async function intake(fileList){
   }
 
   pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
-  panel.setError(pdfs.length > 1 ? `Watermark works on one PDF at a time — using ${src.name}.` : "");
+  panel.setError([warning, pdfs.length > 1 ? `Watermark works on one PDF at a time — using ${src.name}.` : ""]
+    .filter(Boolean).join(" "));
 
   $("srcName").textContent = src.name;
   $("srcMeta").textContent = plural(src.pages, "page") + " · " + fileSize(src.size);

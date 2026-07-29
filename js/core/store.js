@@ -2,6 +2,8 @@
    Array order IS output order — never sort for display.
    Entries: {id, name, size, bytes, pages, thumb} */
 
+import { fileSize } from "./format.js";
+
 const files = [];
 const subs = new Set();
 let uid = 0;
@@ -30,22 +32,43 @@ export function isImage(file){
   return /^image\/(png|jpeg)$/.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
 }
 
+/* Everything happens in a tab, so a file big enough to exhaust it is a real
+   risk. Warn, don't block: whether 200 MB is too much depends on the machine,
+   and refusing to try is worse than trying and being slow. */
+export const BIG_FILE = 100 * 1024 * 1024;
+
+/* What's wrong with a file before anything tries to parse it.
+   `error` means don't bother; `warning` means it will work but may struggle. */
+export function inspect(file){
+  if(file.size === 0){
+    return { error: `"${file.name}" is empty — there are no bytes in it to read.` };
+  }
+  if(file.size > BIG_FILE){
+    return { warning: `"${file.name}" is ${fileSize(file.size)}. Everything happens in this tab, so it may be slow.` };
+  }
+  return {};
+}
+
 /* Reads every PDF in the list into memory and appends it.
    Returns what happened so the caller can decide which error to show. */
 export async function addFiles(fileList){
   const incoming = [...fileList];
   const pdfs = incoming.filter(isPdf);
-  if(!pdfs.length) return { added: [], rejected: incoming.length };
+  if(!pdfs.length) return { added: [], rejected: incoming.length, notes: [] };
 
   const added = [];
+  const notes = [];
   for(const file of pdfs){
+    const { error, warning } = inspect(file);
+    if(error){ notes.push(error); continue; }
+    if(warning) notes.push(warning);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const entry = { id: ++uid, name: file.name, size: file.size, bytes, pages: null, thumb: null };
     files.push(entry);
     added.push(entry);
   }
   notifyChange();
-  return { added, rejected: incoming.length - pdfs.length };
+  return { added, rejected: incoming.length - pdfs.length, notes };
 }
 
 export function remove(id){

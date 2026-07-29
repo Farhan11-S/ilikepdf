@@ -92,6 +92,24 @@ check("moving left off the start does nothing", (await captions()).join(",") ===
 check("a no-op move isn't pushed onto the undo stack",
   await page.locator("#undoBtn").isDisabled());
 
+/* Keyboard reordering: drag needs a mouse and the ← → buttons only appear
+   under hover:none, so this is the only way through for a keyboard. */
+check("a page tile is a tab stop",
+  await page.evaluate(() => document.querySelector(".page-tile").tabIndex === 0));
+await page.locator(".page-tile").first().focus();
+await page.keyboard.press("ArrowRight");
+await page.waitForTimeout(150);
+check("arrow right moves the focused page", (await captions()).join(",") === "2,1,3,1,2");
+check("focus follows the page it moved", await page.evaluate(() =>
+  document.activeElement.classList.contains("page-tile")
+  && document.activeElement.dataset.index === "1"));
+check("order badges renumber after a keyboard move",
+  (await orders()).join(",") === "1,2,3,4,5");
+await page.locator("#undoBtn").click();
+check("one press is one undo step", (await captions()).join(",") === "1,2,3,1,2");
+check("undo empties again after taking it back",
+  await page.locator("#undoBtn").isDisabled());
+
 // --- 2. drag to reorder ----------------------------------------------------
 await drag(0, 4);
 check("drag moves a page to the end", (await captions()).join(",") === "2,3,1,2,1");

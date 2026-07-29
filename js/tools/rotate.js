@@ -5,7 +5,7 @@
    export adds it to the page's existing /Rotate. */
 
 import "../core/chrome.js";
-import { isPdf } from "../core/store.js";
+import { inspect, isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
@@ -88,6 +88,11 @@ async function intake(fileList){
     return;
   }
   const file = pdfs[0];
+  const { error, warning } = inspect(file);
+  if(error){
+    fail(error);
+    return;
+  }
   try{
     const bytes = new Uint8Array(await file.arrayBuffer());
     doc = await thumbs.open(bytes);
@@ -100,7 +105,8 @@ async function intake(fileList){
 
   turns = new Array(src.pages).fill(0);
   pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
-  panel.setError(pdfs.length > 1 ? `Rotate works on one PDF at a time — using ${src.name}.` : "");
+  panel.setError([warning, pdfs.length > 1 ? `Rotate works on one PDF at a time — using ${src.name}.` : ""]
+    .filter(Boolean).join(" "));
 
   $("srcName").textContent = src.name;
   $("srcMeta").textContent = plural(src.pages, "page") + " · " + fileSize(src.size);

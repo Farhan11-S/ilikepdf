@@ -60,13 +60,29 @@ const showDone      = () => view(false, false, true);
 $("pickBtn").onclick = () => fileInput.click();
 fileInput.onchange = e => { intake(e.target.files); fileInput.value = ""; };
 
+/* Before any file is loaded the panel isn't on screen, so an error sent there
+   is an error nobody sees. Same split the other tools use. */
+function fail(msg){
+  if(store.count()){
+    panel.setError(msg);
+    showWorkspace();
+  }else{
+    const el = $("heroError");
+    el.textContent = msg;
+    el.classList.add("on");
+    showHero();
+  }
+}
+
 async function intake(fileList){
-  const { added } = await store.addFiles(fileList);
+  $("heroError").classList.remove("on");
+
+  const { added, notes } = await store.addFiles(fileList);
   if(!added.length){
-    panel.setError("Those files aren't PDFs. Add files ending in .pdf.");
+    fail(notes.length ? notes.join(" ") : "Those files aren't PDFs. Add files ending in .pdf.");
     return;
   }
-  panel.setError("");
+  panel.setError(notes.join(" "));
   showWorkspace();
   // Page counts and thumbnails arrive one by one; each repaints the grid.
   store.pending().forEach(entry => thumbs.hydrate(entry).then(store.notifyChange));
@@ -89,10 +105,12 @@ panel.onAction(async () => {
   const files = store.list();
   panel.setBusy(true, "Merging…");
   panel.setError("");
+  let reading = null;      // whichever file we're on, so a failure can name it
   try{
     const { PDFDocument } = await loadPdfLib();
     const out = await PDFDocument.create();
     for(let i = 0; i < files.length; i++){
+      reading = files[i].name;
       // .slice() — pdf-lib detaches the buffer, and we may merge again.
       const src = await PDFDocument.load(files[i].bytes.slice(), { ignoreEncryption: true });
       const copied = await out.copyPages(src, src.getPageIndices());
@@ -107,7 +125,9 @@ panel.onAction(async () => {
       files.length + " files · " + out.getPageCount() + " pages · " + fileSize(mergedBlob.size);
     showDone();
   }catch(err){
-    panel.setError("That file couldn't be read. It may be password-protected or damaged — remove it and try again.");
+    panel.setError(reading
+      ? `"${reading}" couldn't be read. It may be password-protected or damaged — remove it and try again.`
+      : "Something went wrong before the merge could start. Reload and try again.");
     console.error(err);
   }finally{
     panel.setBusy(false, "Merge PDF");
@@ -117,6 +137,8 @@ panel.onAction(async () => {
 $("downloadBtn").onclick = () => downloadBlob(mergedBlob, "ilikepdf_merged.pdf");
 $("restartBtn").onclick = () => {
   mergedBlob = null;
+  panel.setError("");
+  $("heroError").classList.remove("on");
   store.clear();   // empties the list, which sends us back to the hero
 };
 

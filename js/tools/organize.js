@@ -6,7 +6,7 @@
    page is only ever a reference into one of them. */
 
 import "../core/chrome.js";
-import { isPdf } from "../core/store.js";
+import { inspect, isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
@@ -113,10 +113,14 @@ async function intake(fileList){
   }
 
   const broken = [];
+  const notes = [];
   const adding = sources.length > 0;
   if(adding) remember();   // adding pages is undoable too
 
   for(const file of pdfs){
+    const { error, warning } = inspect(file);
+    if(error){ notes.push(error); continue; }
+    if(warning) notes.push(warning);
     try{
       const bytes = new Uint8Array(await file.arrayBuffer());
       const doc = await thumbs.open(bytes);
@@ -133,13 +137,16 @@ async function intake(fileList){
 
   if(!sources.length){
     if(adding) history.pop();
-    fail(`"${broken.join('", "')}" couldn't be opened. It may be password-protected or damaged.`);
+    fail(broken.length
+      ? `"${broken.join('", "')}" couldn't be opened. It may be password-protected or damaged.`
+      : notes.join(" "));
     return;
   }
 
-  panel.setError(broken.length
-    ? `Skipped ${broken.join(", ")} — password-protected or damaged.`
-    : "");
+  panel.setError([
+    broken.length ? `Skipped ${broken.join(", ")} — password-protected or damaged.` : "",
+    ...notes
+  ].filter(Boolean).join(" "));
 
   showWorkspace();
   grid.refresh();

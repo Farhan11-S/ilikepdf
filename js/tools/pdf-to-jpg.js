@@ -5,7 +5,7 @@
    one image downloads as an image, several are zipped. */
 
 import "../core/chrome.js";
-import { isPdf } from "../core/store.js";
+import { inspect, isPdf } from "../core/store.js";
 import * as thumbs from "../core/thumbs.js";
 import { mountGrid } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
@@ -101,6 +101,11 @@ async function intake(fileList){
     return;
   }
   const file = pdfs[0];
+  const { error, warning } = inspect(file);
+  if(error){
+    fail(error);
+    return;
+  }
   try{
     const bytes = new Uint8Array(await file.arrayBuffer());
     doc = await thumbs.open(bytes);
@@ -112,7 +117,8 @@ async function intake(fileList){
   }
 
   picked = new Set();
-  note = pdfs.length > 1 ? `This works on one PDF at a time — using ${src.name}.` : "";
+  note = [warning, pdfs.length > 1 ? `This works on one PDF at a time — using ${src.name}.` : ""]
+    .filter(Boolean).join(" ");
   panel.setError(note);
 
   pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
