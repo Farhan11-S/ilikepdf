@@ -30,6 +30,7 @@ let mode = "range";
 let picked = new Set();   // 0-based page indices, extract mode
 let result = null;        // {blob, filename, count}
 let note = "";            // sticky message about the file itself, not the settings
+let failure = "";         // why the last attempt failed; cleared by the next one
 let pageItems = [];       // grid items: one per page of the loaded document
 let owner = new Map();    // page index -> which output file it lands in
 let ownerCount = 0;       // how many output files there are
@@ -152,6 +153,7 @@ async function intake(fileList){
   }
 
   picked = new Set();
+  failure = "";
   rangeInput.value = "1-" + src.pages;
   rangeInput.max = src.pages;
   note = [warning, pdfs.length > 1 ? `Split works on one PDF at a time — using ${src.name}.` : ""]
@@ -194,8 +196,10 @@ function update(){
   ownerCount = outputs.length;
   grid.paint();
 
-  // A bad range replaces the note; a good one lets the note show again.
-  panel.setError(error || note);
+  // A failed attempt outranks both; a bad range replaces the note; a good one
+  // lets the note show again. Rendering it here rather than from the catch is
+  // what stops the finally's update() wiping it a moment later.
+  panel.setError(failure || error || note);
   if(error){
     panel.setSummary("");
     panel.setEnabled(false, "Split PDF");
@@ -222,6 +226,7 @@ panel.onAction(async () => {
   if(!outputs.length) return;
 
   panel.setBusy(true, "Splitting…");
+  failure = "";
   panel.setError("");
   try{
     const { PDFDocument } = await loadPdfLib();
@@ -267,7 +272,7 @@ panel.onAction(async () => {
     $("downloadBtn").textContent = result.count === 1 ? "Download PDF" : "Download ZIP";
     showDone();
   }catch(err){
-    panel.setError("That PDF couldn't be split. It may be password-protected or damaged.");
+    failure = "That PDF couldn't be split. It may be password-protected or damaged.";
     console.error(err);
   }finally{
     panel.setBusy(false, "Split PDF");
@@ -277,7 +282,8 @@ panel.onAction(async () => {
 
 $("downloadBtn").onclick = () => downloadBlob(result.blob, result.filename);
 $("restartBtn").onclick = () => {
-  src = null; doc = null; result = null; picked = new Set(); note = ""; pageItems = [];
+  src = null; doc = null; result = null; picked = new Set(); note = ""; failure = "";
+  pageItems = [];
   grid.reset();
   panel.setError("");
   $("heroError").classList.remove("on");

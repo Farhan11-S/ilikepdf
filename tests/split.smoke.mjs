@@ -256,6 +256,34 @@ check("mode controls stay usable at 375px", await page.locator(".modes").isVisib
 check("the action button is reachable at 375px", await page.locator(".btn-action").isVisible());
 await page.screenshot({ path: path.join(TMP, "split-375.png") });
 
+// --- 11. an export that fails says so --------------------------------------
+/* The failure has to be injected into a page that already has pdf-lib on it,
+   and reloading would throw the patch away — so export once to pull the library
+   in, then restart, which returns to the hero without a navigation. */
+await page.setViewportSize({ width: 1280, height: 900 });
+await loadGamma();
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+await page.locator("#restartBtn").click();
+await page.setInputFiles("#fileInput", `${FIX}/gamma.pdf`);
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 5);
+await page.evaluate(() => {
+  window.PDFLib.PDFDocument.load = () => { throw new Error("forced"); };
+});
+
+const splitNoise = errors.length;
+await page.locator(".btn-action").click();
+await page.waitForTimeout(600);
+const splitMsg = (await page.locator(".panel .error").textContent()).trim();
+check("a failed split says so",
+  (await page.locator(".panel .error").isVisible()) && splitMsg.length > 0,
+  JSON.stringify(splitMsg));
+check("a failed split doesn't claim success", !(await page.locator("#done").isVisible()));
+check("the button is usable again after a failed split",
+  !(await page.locator(".btn-action").isDisabled()));
+// The console.error in the catch is the point of the test, not a defect.
+errors.length = splitNoise;
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();

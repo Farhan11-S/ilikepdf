@@ -84,6 +84,20 @@ check("empty text disables export", await page.locator(".btn-action").isDisabled
 check("the button says what's missing",
   (await page.locator(".btn-action").textContent()) === "Type some text first");
 check("no mark is previewed with nothing to stamp", (await marks()) === 0);
+/* Helvetica is WinAnsi-encoded, so drawText throws on anything outside it. The
+   second pair matters as much as the first: a predicate that's too strict would
+   refuse ordinary European text, which is a worse bug than the one it fixes. */
+await page.fill("#textInput", "日本語テキスト");
+check("text Helvetica can't draw disables export",
+  await page.locator(".btn-action").isDisabled());
+check("the button says why",
+  (await page.locator(".btn-action").textContent()) === "Helvetica can't draw those characters");
+await page.fill("#textInput", "Café — naïve");
+check("WinAnsi accents and dashes are still allowed",
+  !(await page.locator(".btn-action").isDisabled()));
+check("and still export-ready",
+  (await page.locator(".btn-action").textContent()) === "Add watermark");
+
 await page.fill("#textInput", "DRAFT");
 check("typing brings the mark back", (await marks()) === 1);
 check("the preview follows the text",
@@ -248,6 +262,33 @@ check("no horizontal overflow at 375px", overflow <= 0, "overflow " + overflow +
 check("the text field stays reachable at 375px", await page.locator("#textInput").isVisible());
 check("the export button stays reachable at 375px", await page.locator(".btn-action").isVisible());
 await page.screenshot({ path: path.join(TMP, "watermark-375.png") });
+
+// --- 10. an export that fails says so --------------------------------------
+/* The failure has to be injected into a page that already has pdf-lib on it,
+   and reloading would throw the patch away — so export once to pull the library
+   in, then restart, which returns to the hero without a navigation. */
+await page.setViewportSize({ width: 1280, height: 900 });
+await load("gamma.pdf", 5);
+await runIt();
+await page.locator("#restartBtn").click();
+await page.setInputFiles("#fileInput", `${FIX}/gamma.pdf`);
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 5);
+await page.evaluate(() => {
+  window.PDFLib.PDFDocument.load = () => { throw new Error("forced"); };
+});
+
+const markNoise = errors.length;
+await page.locator(".btn-action").click();
+await page.waitForTimeout(600);
+const markMsg = (await page.locator(".panel .error").textContent()).trim();
+check("a failed watermark says so",
+  (await page.locator(".panel .error").isVisible()) && markMsg.length > 0,
+  JSON.stringify(markMsg));
+check("a failed watermark doesn't claim success", !(await page.locator("#done").isVisible()));
+check("the button is usable again after a failed watermark",
+  !(await page.locator(".btn-action").isDisabled()));
+// The console.error in the catch is the point of the test, not a defect.
+errors.length = markNoise;
 
 check("no console errors", errors.length === 0, errors.join(" || "));
 

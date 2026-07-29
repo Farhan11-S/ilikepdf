@@ -37,3 +37,37 @@ export function widthOfText(text, size){
 export function heightOfText(size){
   return HEIGHT * size / 1000;
 }
+
+/* Can Helvetica draw this at all?
+
+   pdf-lib encodes StandardFonts.Helvetica as WinAnsi, and drawText *throws* on
+   anything outside it — so "日本語" is not a mark that comes out wrong, it is an
+   export that dies. Knowing before the button is pressed is what lets the tool
+   say so instead of failing.
+
+   The low half is a range. The high half is WinAnsi's own arrangement of
+   punctuation and Latin-1, which is not contiguous in Unicode, so those code
+   points are listed: the curly quotes, the dashes, and the rest of the
+   characters a word processor produces without being asked.
+
+   TODO: the complete fix is registerFontkit + embedFont with a font the user
+   supplies, which draws anything. That is a real feature — a ~140 KB dependency
+   (@pdf-lib/fontkit) and a file input — and watermark.html has about 2 KB of
+   budget left. Until someone asks for it, refusing honestly beats throwing. */
+
+const WINANSI_HIGH = new Set([
+  0x20AC, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030,
+  0x0160, 0x2039, 0x0152, 0x017D, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
+  0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x017E, 0x0178
+]);
+
+export function canDraw(text){
+  for(const ch of String(text)){
+    const c = ch.codePointAt(0);
+    if(c >= 32 && c <= 126) continue;        // ASCII
+    if(c >= 0xA0 && c <= 0xFF) continue;     // Latin-1 supplement
+    if(WINANSI_HIGH.has(c)) continue;        // the ones WinAnsi moves
+    return false;
+  }
+  return true;
+}

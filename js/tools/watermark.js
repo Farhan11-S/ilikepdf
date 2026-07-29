@@ -16,7 +16,7 @@ import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
 import { fileSize, plural, baseName } from "../core/format.js";
-import { widthOfText, heightOfText } from "../core/helvetica.js";
+import { widthOfText, heightOfText, canDraw } from "../core/helvetica.js";
 import { norm, toPageSpace, visualSize } from "../core/place.js";
 
 const $ = id => document.getElementById(id);
@@ -32,6 +32,7 @@ let result = null;
 let mode = "text";
 let image = null;    // {name, type, bytes, width, height, bitmap}
 let imageError = "";
+let failure = "";    // why the last attempt failed; cleared by the next one
 
 /* The settings, normalised. Range inputs can't produce anything out of bounds,
    but the number fields can be emptied. */
@@ -147,6 +148,7 @@ function fail(msg){
 
 async function intake(fileList){
   $("heroError").classList.remove("on");
+  failure = "";
   const files = [...fileList];
 
   // Once a document is open, a dropped image is the watermark rather than a
@@ -201,6 +203,9 @@ imageInput.onchange = e => {
 
 async function useImage(file){
   imageError = "";
+  // A new image is a new attempt: without this the sticky failure below would
+  // outrank whatever this image has to say about itself.
+  failure = "";
   if(!isImage(file)){
     imageError = `"${file.name}" isn't a PNG or JPG.`;
     image = null;
@@ -244,7 +249,9 @@ function update(){
     : "PNG or JPG. Nothing is uploaded.";
 
   grid.paint();
-  panel.setError(imageError);
+  // Rendering the failure here rather than from the catch is what stops the
+  // finally's update() wiping it a moment later.
+  panel.setError(failure || imageError);
 
   if(!src) return;
 
@@ -256,15 +263,19 @@ function update(){
     "Pages covered: <strong>" + (marks ? pageItems.length : "—") + "</strong>"
   );
 
-  const label = ready() ? "Add watermark"
-              : mode === "text" ? "Type some text first"
-              : "Choose an image first";
-  panel.setEnabled(ready(), label);
+  // Helvetica would throw at export rather than draw something approximate, so
+  // the button says so now instead of failing later — see js/core/helvetica.js.
+  const drawable = mode !== "text" || canDraw(s.text);
+  const label = !ready()  ? (mode === "text" ? "Type some text first" : "Choose an image first")
+              : !drawable ? "Helvetica can't draw those characters"
+              : "Add watermark";
+  panel.setEnabled(ready() && drawable, label);
 }
 
 /* ---------- export ---------- */
 panel.onAction(async () => {
   panel.setBusy(true, "Watermarking…");
+  failure = "";
   panel.setError("");
   try{
     const { PDFDocument, StandardFonts, degrees, rgb } = await loadPdfLib();
@@ -322,7 +333,7 @@ panel.onAction(async () => {
       plural(pages.length, "page") + " marked · " + fileSize(result.blob.size);
     showDone();
   }catch(err){
-    panel.setError("That PDF couldn't be watermarked. It may be password-protected or damaged.");
+    failure = "That PDF couldn't be watermarked. It may be password-protected or damaged.";
     console.error(err);
   }finally{
     panel.setBusy(false, "Add watermark");
@@ -337,7 +348,8 @@ function hexToRgb(hex, rgb){
 
 $("downloadBtn").onclick = () => downloadBlob(result.blob, result.filename);
 $("restartBtn").onclick = () => {
-  src = null; doc = null; result = null; pageItems = []; image = null; imageError = "";
+  src = null; doc = null; result = null; pageItems = []; image = null;
+  imageError = ""; failure = "";
   grid.reset();
   panel.setError("");
   $("heroError").classList.remove("on");

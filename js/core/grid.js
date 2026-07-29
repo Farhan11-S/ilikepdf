@@ -243,8 +243,9 @@ export function mountGrid(el, opts){
       ev.preventDefault();
       onReorderStart?.();      // one undo step per press, same as one drag
       reorder(from, to);
-      // The caller refreshed the grid, so this element is gone; follow the
-      // item to its new tile or focus lands back on the document.
+      // refresh() has already put focus back on this item's new tile, without
+      // scrolling. This focus() is the deliberate-move case: the user asked for
+      // it, so the tile they moved should be brought into view.
       find(item.id)?.focus();
     });
 
@@ -279,12 +280,55 @@ export function mountGrid(el, opts){
     });
   }
 
+  /* ---------- keeping focus across a rebuild ----------
+
+     refresh() throws every tile away, which drops focus to the document. That
+     is invisible with a mouse and ruinous with a keyboard, because refresh()
+     isn't only called by the thing the user just did: a thumbnail finishing in
+     the background calls it too (tools hydrate entries and notify), so the
+     answer to "where was I?" can be destroyed by an event the user didn't
+     cause. Position survives a rebuild via FLIP and thumbnails survive via the
+     cache; focus is the third thing that has to. */
+
+  function focusMemo(){
+    const active = document.activeElement;
+    // Only ever restore focus that was already inside this grid. A background
+    // refresh must not pull the caret out of a text field elsewhere on the page.
+    if(!active || !el.contains(active)) return null;
+    if(active.classList.contains("add-card")) return { add: true };
+    const tile = active.closest(sel);
+    if(!tile) return null;
+    // Focus may be on a button within the tile rather than the tile itself.
+    return {
+      id: tile.dataset.id,
+      action: active.dataset.action ?? null,
+      remove: active.classList.contains("remove")
+    };
+  }
+
+  function restoreFocus(memo){
+    if(!memo) return;
+    if(memo.add){
+      el.querySelector(".add-card")?.focus({ preventScroll: true });
+      return;
+    }
+    const tile = find(memo.id);
+    if(!tile) return;      // the focused item is gone — it was just removed
+    const target = memo.action ? tile.querySelector(`[data-action="${memo.action}"]`)
+                 : memo.remove ? tile.querySelector(".remove")
+                 : tile;
+    // preventScroll: this is putting focus back where it already was, so it has
+    // no business moving the viewport. A deliberate move scrolls on its own.
+    (target || tile).focus({ preventScroll: true });
+  }
+
   /* ---------- rendering the whole grid ---------- */
 
   function refresh(){
-    // FIRST: where every tile is right now.
+    // FIRST: where every tile is right now, and which one the user was on.
     const before = new Map();
     [...el.querySelectorAll(sel)].forEach(t => before.set(t.dataset.id, t.getBoundingClientRect()));
+    const focused = focusMemo();
 
     io?.disconnect();
     el.replaceChildren();
@@ -304,6 +348,8 @@ export function mountGrid(el, opts){
     if(io){
       el.querySelectorAll(sel).forEach(t => { if(!t.dataset.rendered) io.observe(t); });
     }
+
+    restoreFocus(focused);
 
     // LAST / INVERT / PLAY.
     if(before.size){

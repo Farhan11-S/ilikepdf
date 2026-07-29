@@ -202,6 +202,28 @@ await page.waitForTimeout(150);
 check("arrow left at the start does nothing",
   (await names()).join(",") === "alpha.pdf,beta.pdf,gamma.pdf");
 
+/* A refresh the user didn't ask for must not cost them their place. Thumbnails
+   hydrate one by one and each one repaints the whole grid (merge.js), so
+   without this the three checks above only pass when hydration happens to have
+   finished first — which is why they were intermittent against source and
+   green against the inlined build. Adding a file forces the same rebuild on
+   demand, so this reproduces it without waiting on a race. */
+// Scoped to the focused card itself: querying the document would happily
+// return the first card's name when focus has actually fallen to <body>.
+const focusedName = () => page.evaluate(() => {
+  const card = document.activeElement?.closest?.(".card");
+  return card ? card.querySelector(".name").textContent : "(focus lost)";
+});
+await page.locator(".card").first().focus();
+await page.setInputFiles("#fileInput", `${FIX}/onepage.pdf`);
+await page.waitForFunction(() => document.querySelectorAll(".card").length === 4);
+check("a background rebuild keeps focus where it was",
+  (await focusedName()) === "alpha.pdf", await focusedName());
+await page.waitForFunction(() =>
+  ![...document.querySelectorAll(".card .meta")].some(m => m.textContent.includes("reading…")));
+check("and still keeps it once thumbnails have hydrated",
+  (await focusedName()) === "alpha.pdf", await focusedName());
+
 // --- 12. narrow viewport ---------------------------------------------------
 await page.setViewportSize({ width: 375, height: 800 });
 await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/beta.pdf`]);
