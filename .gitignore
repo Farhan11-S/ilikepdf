@@ -6,3 +6,5 @@ node_modules/
 # local scratch — test PDFs shouldn't end up in the repo
 tmp/
 *.local.*
+dist/
+dist.zip

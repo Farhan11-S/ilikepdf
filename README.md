@@ -31,7 +31,53 @@ python3 -m http.server 8000 &
 npm test
 ```
 
-`BASE` overrides the URL, `CHROME` overrides the browser binary.
+`BASE` overrides the URL, `CHROME` overrides the browser binary. Point `BASE` at
+the preview server to run the same suites against the built site:
+
+```sh
+npm run build && npm run preview &
+BASE=http://localhost:8001 npm test
+```
+
+The harness records every response of 400 or worse as an error, so a path the
+build rewrote wrongly fails whatever suite loads that page. That is the main
+risk of building at all, and the reason the whole suite runs against `dist/`.
+
+## Building and deploying
+
+Source is directly servable and stays that way; the build only produces the
+upload.
+
+```sh
+npm run build     # -> dist/ and dist.zip
+```
+
+Upload the contents of `dist/` — or `dist.zip`, if the host only offers a file
+manager. Nothing else needs to go up.
+
+The target is one round trip to first paint: **every file under 14,336 bytes
+compressed**, roughly what TCP's initial congestion window carries before it has
+to wait for an acknowledgement. The build prints a raw/gzip/brotli table and
+**fails** if a page misses it — a budget nobody enforces is a wish.
+
+What it does:
+
+- Bundles and minifies each page's JS with esbuild, the CSS with lightningcss,
+  and **inlines both** into the HTML. Shared hosting can't be counted on for
+  HTTP/2, so on pages this small fewer requests beats better caching.
+- Gives each `vendor/` file a content-hashed name and rewrites the references —
+  which is a string replace, and why the paths in source are literal, relative
+  and never built up from variables.
+- Writes `.br` and `.gz` beside every text file. Shared hosting often has no
+  `mod_brotli`, but Apache will serve a copy we compressed ourselves.
+- Emits an `.htaccess` that serves those by `Accept-Encoding`, caches the hashed
+  vendor files for a year and the pages not at all, and wraps every block in
+  `<IfModule>` so a host missing a module serves plain files instead of a 500.
+
+Paths are relative throughout, so `dist/` works from a subdirectory as well as a
+domain root. If a page ever busts the budget, pull the shared CSS out to one
+cached file before trying anything cleverer — it's the cheapest lever and costs
+one request.
 
 ## Tools
 
@@ -67,7 +113,9 @@ jpg-to-pdf.html     JPG to PDF
 pdf-to-jpg.html     PDF to JPG
 favicon.svg
 vendor/             the three libraries, committed
+build.mjs           builds dist/ — inlines, hashes, compresses, checks the budget
 scripts/vendor.mjs  refreshes vendor/ from node_modules
+dist/               build output, gitignored — the only thing uploaded
 css/tokens.css      design tokens, reset, button primitives
 css/app.css         header, footer, hero, tool grid, workspace, cards, panel
 js/core/tools.js    the tool registry

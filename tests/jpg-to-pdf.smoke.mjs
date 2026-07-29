@@ -68,10 +68,14 @@ check("export is enabled", !(await page.locator(".btn-action").isDisabled()));
    preview, so pdf.js should never be fetched. */
 const loaded = () => page.evaluate(() =>
   [...document.querySelectorAll("script[src]")].map(s => s.getAttribute("src")));
+/* The built site content-hashes vendor filenames, so match the shape rather
+   than the literal name — otherwise this passes in dist/ for the wrong reason. */
+const PDFJS = /(^|\/)pdf(\.[a-z0-9]+)?\.min\.js$/;
+const PDFLIB = /(^|\/)pdf-lib(\.[a-z0-9]+)?\.min\.js$/;
 check("pdf.js is never loaded — there is no PDF to preview",
-  !(await loaded()).some(s => s.includes("pdf.min.js")), (await loaded()).join(" "));
+  !(await loaded()).some(s => PDFJS.test(s)), (await loaded()).join(" "));
 check("pdf-lib is not loaded before Export either",
-  !(await loaded()).some(s => s.includes("pdf-lib")), (await loaded()).join(" "));
+  !(await loaded()).some(s => PDFLIB.test(s)), (await loaded()).join(" "));
 
 // --- 2. reordering ---------------------------------------------------------
 /* The ← → buttons only show under hover:none, so drive them the way merge and

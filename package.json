@@ -2,15 +2,20 @@
   "name": "ilikepdf",
   "private": true,
   "version": "0.1.0",
-  "description": "Client-side PDF tools. The site itself needs no install — this file pins the vendored libraries and drives the browser smoke tests.",
+  "description": "Client-side PDF tools. The site itself needs no install \u2014 this file pins the vendored libraries and drives the browser smoke tests.",
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8000",
     "vendor": "node scripts/vendor.mjs",
-    "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs && node tests/rotate.smoke.mjs && node tests/organize.smoke.mjs && node tests/page-numbers.smoke.mjs && node tests/watermark.smoke.mjs && node tests/jpg-to-pdf.smoke.mjs && node tests/pdf-to-jpg.smoke.mjs"
+    "test": "node tests/home.smoke.mjs && node tests/merge.smoke.mjs && node tests/split.smoke.mjs && node tests/rotate.smoke.mjs && node tests/organize.smoke.mjs && node tests/page-numbers.smoke.mjs && node tests/watermark.smoke.mjs && node tests/jpg-to-pdf.smoke.mjs && node tests/pdf-to-jpg.smoke.mjs",
+    "build": "node build.mjs",
+    "preview": "python3 -m http.server 8001 --directory dist"
   },
   "devDependencies": {
+    "esbuild": "0.28.1",
+    "html-minifier-terser": "7.2.0",
     "jszip": "3.10.1",
+    "lightningcss": "1.33.0",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "3.11.174",
     "playwright-core": "^1.56.1"

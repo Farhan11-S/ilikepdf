@@ -73,8 +73,10 @@ check("the summary warns about the ZIP",
 /* Nothing here writes a PDF, so pdf-lib should never be fetched. */
 const loaded = () => page.evaluate(() =>
   [...document.querySelectorAll("script[src]")].map(s => s.getAttribute("src")));
+/* Content-hashed in dist/, so match the shape, not the literal name. */
+const PDFLIB = /(^|\/)pdf-lib(\.[a-z0-9]+)?\.min\.js$/;
 check("pdf-lib is never loaded — nothing here writes a PDF",
-  !(await loaded()).some(s => s.includes("pdf-lib")), (await loaded()).join(" "));
+  !(await loaded()).some(s => PDFLIB.test(s)), (await loaded()).join(" "));
 
 // --- 2. picking pages ------------------------------------------------------
 await page.locator('input[name="mode"][value="pick"]').check();
