@@ -8,21 +8,22 @@ every phase in it is now shipped, so treat it as history, not a task list.*
 
 ## Where things stand
 
-All eight tools in `js/core/tools.js` are `ready: true` and working. **478
-assertions across 10 smoke suites, green against source, the built `dist/`, and
-the live site.**
+All eight tools in `js/core/tools.js` are `ready: true` and working. **502
+assertions across 10 smoke suites, green against source and the built `dist/`.**
+(478 of them were also green against the live site as of Phase 11; the 24 added
+in 10.1 have not been run against production — the deploy is one build behind.)
 
 ```sh
 npm install && npx playwright install chromium
 npm run serve &            # source, port 8000
-npm test                   # 478 assertions
+npm test                   # 502 assertions
 npm run build              # -> dist/ + dist.zip, prints the size table
 npm run preview &          # dist/, port 8001
 BASE=http://localhost:8001 npm test    # same suites against the build
 ```
 
 Per-suite counts, so you can tell at a glance if something got dropped:
-`home 38 · merge 51 · split 71 · rotate 53 · organize 74 · page-numbers 41 ·
+`home 38 · merge 57 · split 81 · rotate 53 · organize 82 · page-numbers 41 ·
 watermark 51 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 `npm test` chains with `&&`, so the first suite to fail hides every suite after
@@ -31,7 +32,7 @@ only thing broken.
 
 **The build is honest and enforced.** Order is minify → inline → brotli, so the
 `.br` files are compression of already-minified bytes; nothing is double-handled.
-Worst page is `watermark.html` at **12,594 B brotli against a 14,336 B budget
+Worst page is `watermark.html` at **12,580 B brotli against a 14,336 B budget
 (88%)**, and `build.mjs` exits non-zero if any page misses.
 
 Measured, in case anyone proposes dropping minification because "brotli does it
@@ -130,19 +131,127 @@ Collect a handful of genuinely different PDFs and run all eight tools over each:
 | scanned document (big JPEG per page) | memory during PDF→JPG at 3×; thumbnail render time |
 | CJK or Cyrillic with embedded fonts | page-numbers/watermark drawing over it (should be fine — different code path from 9.2, verify) |
 | 300+ pages | `IntersectionObserver` queue, `copyPages` cost, progress bar responsiveness |
-| a fillable form (AcroForm) | pdf-lib `copyPages` drops form fields — split/organize would silently lose them |
+| a fillable form (AcroForm) | **done — see 10.1.** `copyPages` drops the catalog `/AcroForm` (not the widgets); merge/split/organize all warn |
 | password-protected | the "name the file" error path (`ignoreEncryption: true` may open it anyway) |
 | PDF/A or a linearised file | nothing expected, but worth one run |
 
-**The AcroForm case is the one I'd bet on breaking.** `copyPages` doesn't carry
-form field widgets across, so Split and Organize would hand back a document that
-looks right and has lost every field. If that's confirmed, the fix is not to
-implement form copying — it's to **detect it and say so** ("this PDF has form
-fields; they won't survive being split"), consistent with how this project
-handles things pdf-lib can't do.
-
 Do **not** commit large binary fixtures. Test manually, write down what happened
 in this file, and only add a fixture if it's small and reproducible.
+
+### 10.1 AcroForm — confirmed, but the first write-up overclaimed (2026-07-30)
+
+**The bet paid off, and the mechanism was wrong in a way that matters.** The
+prediction was that `copyPages` "doesn't carry form field widgets across". It
+carries them across fine — every widget survives on the pages. What it drops is
+the catalog's **`/AcroForm` dictionary**, which is the thing that makes them a
+*form*. The widgets arrive orphaned.
+
+Measured on a filled-in two-page generated form:
+
+| | source | after copyPages |
+|---|---|---|
+| pdf-lib `getForm().getFields()` | 5 | **0** |
+| pdf.js `getFieldObjects()` | 6 keys | **null** |
+| widget annotations on pages | 6 | 6 |
+| pdf.js `getAnnotations()` page 1 | 3 Widgets, named | 3 Widgets, named |
+| **rendered page 1, differing pixels** | — | **0 of 500,990** |
+
+#### The correction, and how it was caught
+
+**The first version of this section — and the warning that shipped with it —
+said "the pages will look right, but the fields will be gone". That is wrong,
+and a real file disproved it immediately.** Tested against hexapdf's public
+example, <https://hexapdf.gettalong.org/examples/acro_form.pdf>, 14 fields,
+19 widgets:
+
+| | source | after merge |
+|---|---|---|
+| catalog `/AcroForm` | yes (`/Fields` 14, `/DR`, `/DA`) | **absent** |
+| widgets on pages | 19 | **19** |
+| …with `/FT`, `/Parent`, `/AP`, `/V` | 13 / 6 / 19 / 12 | **13 / 6 / 19 / 12** |
+| pdf.js "editable widgets a viewer renders" | 19 | **19** |
+| pdf-lib `getFields()` | 14 | **0** |
+
+So the widgets survive *completely*, values included, and **a viewer that builds
+its form UI from page annotations still shows fillable boxes** — that is pdf.js
+and so Firefox, PDFium and so Chrome. Open the merged file in a browser and it
+looks and behaves like a working form. The original wording was therefore a
+claim any user could disprove on the first try, which is worse than not warning
+at all: it teaches people to ignore the message.
+
+**What is actually lost is the document-level form** — `/Fields`, `/DR`, `/DA`,
+the field hierarchy, calculation order. Anything that reads or fills form data
+(pdf-lib included, so our own tools) no longer sees a form; FDF/XFDF export and
+import, programmatic filling and flattening all break. The current wording
+claims exactly that and nothing more:
+
+> "X" has form fields. Being merged keeps the boxes and what's in them, but not
+> the form itself — software that reads or fills form data will no longer see one.
+
+`split.smoke.mjs` §12 now asserts **both** directions: that the output has no
+form left, *and* that the widgets survive intact, plus a guard that the message
+never again says "fields will be gone". The lesson is the one Phase 10 exists
+for — the generated fixture and the real file agreed on the mechanism and
+disagreed on what it means to a user, and only the real file could say which.
+
+**Three tools, not two.** The prediction named Split and Organize. **Merge has
+it too** — same `copyPages` call, same loss. `rotate.js`, `page-numbers.js` and
+`watermark.js` all `PDFDocument.load` and mutate in place, never copy, and the
+form survives them intact (verified: 5 fields in, 5 fields out through a
+rotate). That split — copiers lose forms, mutators don't — is the rule to carry
+forward, and it is why `forms.js` is imported by exactly three tools.
+
+**Detected, not implemented**, as called for. `js/core/forms.js` is `hasForm()`
+over pdf.js's `getFieldObjects()` plus one shared `formWarning()` wording. Two
+things about the shape of it:
+
+- **Detection is free.** All three tools already have a pdf.js document open for
+  thumbnails, so nothing is parsed twice. For Merge that meant putting it in
+  `thumbs.hydrate()` (the only caller is `merge.js`), which fills in `pages`,
+  `thumb` and now `form` from the one open document — reopening every file just
+  to ask would have doubled the cost of adding one.
+- **Merge needed the 9.1 treatment.** The flag arrives from hydration, one file
+  at a time, *after* intake has painted — so the message could not be written
+  once at intake and left alone. `merge.js` now has the same `failure` +
+  `showNotes()` shape `split.js` and `watermark.js` got in 9.1, and it is the
+  same reason: a late thumbnail must not wipe the message.
+
+esbuild keeps `forms.js` off the five pages that don't import it — checked, and
+`watermark.html` came out **14 bytes smaller** than before (12,580 of 14,336,
+still 88%). The three that do grew: merge 10,861 · split 11,748 · organize
+11,136, all comfortably inside budget.
+
+**24 new assertions** (merge +6, split +10, organize +8) — **502 across 10
+suites**, green against source and `dist/`. Per-suite now: `home 38 · merge 57 ·
+split 81 · rotate 53 · organize 82 · page-numbers 41 · watermark 51 ·
+jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
+
+Each suite asserts **both halves**: that the warning appears and names the file,
+*and* that the warning is true — the exported document really does come back
+with zero fields. Confirmed failing first by stubbing `hasForm()` to `false`:
+the warning assertions failed, the "output has no form left" assertions kept
+passing, which is what proves the defect is real and not an artefact of the
+detector. Each suite also asserts the negative, that an ordinary PDF is not
+accused, and that the warning never disables the export — it is a warning, not a
+refusal.
+
+`tests/fixtures/form.pdf` (6.8 KB, 2 pages, 5 fields) is committed, with
+`make-form.mjs` beside it. Built with pdf-lib's own form API rather than taken
+from a real-world file, so it is small, reproducible, and uses the exact library
+version the site ships — what it proves about `copyPages` is about *our*
+pdf-lib. Fields are deliberately spread across both pages; a fixture with
+everything on page 1 would pass a split that dropped page 2's fields.
+
+**Still not doing form copying.** It means rebuilding the field hierarchy, `/DA`
+and `/DR` resources, appearance streams and radio-group kids — squarely in the
+class of things this project declines to half-do. The message is the fix.
+
+### 10.2–10.6 — still open
+
+The other five rows of the table above are untouched: scanned/JPEG-heavy, CJK
+with embedded fonts, 300+ pages, password-protected, PDF/A or linearised. These
+need genuinely foreign files rather than anything we can generate — which is
+exactly what makes them the remaining unknown.
 
 ---
 
@@ -406,13 +515,17 @@ Learned the hard way; all of these are load-bearing.
 9    all three defects      DONE      2026-07-29
 12.1 focus across rebuild   DONE      2026-07-29
 11   deploy + verify        DONE      2026-07-30  (found 2 more .htaccess bugs)
-10   real-world PDFs        open      the actual unknown, and now the only one
+10.1 AcroForm               DONE      2026-07-30  (confirmed; 3 tools, not 2)
+10.2-10.6 other real PDFs   open      needs files we can't generate
 12.2 font embedding         open      only if someone asks
 ```
 
-**10 is what's left.** Everything else is either shipped or explicitly parked.
-It stays open-ended because it is discovery, not a task with a finish line —
-expect it to generate its own phase 13.
+**The rest of 10 is what's left**, and it needs genuinely foreign files — that
+is the whole point of it. It stays open-ended because it is discovery, not a
+task with a finish line; expect it to generate its own phase 13.
+
+`dist/` is one build ahead of what is deployed. 10.1 changed three tool pages,
+so the live site still splits forms silently — worth a deploy.
 
 The lesson from 11, worth carrying into 10: the `.htaccess` was reviewed twice
 and looked right both times, and it was still wrong in two ways that only a real

@@ -127,6 +127,7 @@ js/core/busy.js     the bottom-right busy pill
 js/core/thumbs.js   pdf.js setup + page rendering
 js/core/place.js    anchors and rotated-page coordinates
 js/core/helvetica.js  text metrics, for measuring without pdf-lib
+js/core/forms.js    AcroForm detection + the warning the copying tools show
 js/core/images.js   reading images in and embedding them
 js/core/grid.js     the one grid: cards or page tiles, lazy, FLIP reorder
 js/core/panel.js    action panel, progress bar, error text
@@ -216,6 +217,18 @@ workaround it carried only because it was cross-origin.
 
 Don't build UI that implies otherwise: it cannot encrypt or password-protect,
 meaningfully compress, extract or edit text, or convert to/from Office formats.
+
+It also **cannot copy a form**. `copyPages` carries a page's widget annotations
+across but not the catalog's `/AcroForm`, so the fields arrive orphaned. The
+widgets survive completely — values included — and a browser will still show
+fillable boxes, so the result *looks* fine; what is gone is the document-level
+form, and anything that reads or fills form data no longer sees one. Merge,
+Split and Organize copy pages and so all three warn before they do it
+(`js/core/forms.js`); Rotate, Page numbers and Watermark mutate the document in
+place and keep the form intact. Don't add the warning to those three, don't be
+tempted to "fix" it by implementing form copying, and **don't word the warning
+as "the fields will be gone"** — they visibly aren't, and a real file disproved
+exactly that phrasing. See NEXT.md 10.1.
 
 That's why there is no Compress tool. All pdf-lib could do is strip metadata and
 re-save with `useObjectStreams: true`, which saves low single-digit percentages —
