@@ -19,6 +19,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PDFDocument } from "pdf-lib";
+import JSZip from "jszip";
 import { launch, BASE, TMP } from "./harness.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,24 +55,30 @@ const withTimeout = (promise, ms, label) => Promise.race([
 
 const { browser, page, errors } = await launch();
 
-/* What came out: page count for a PDF, entry count for a ZIP, else the type. */
+/* What came out: page count for a PDF, entry count for a ZIP, else the type,
+   with the size in every case — output size is half of what 10.4 is asking.
+
+   Inspected in Node rather than in the page. The first version passed the bytes
+   into page.evaluate as a plain array, which is one JS number per byte over the
+   CDP wire: the 352-page PDF→JPG zip took the *runner* out with a heap OOM
+   while the tool under test had done its job fine. Measuring something must not
+   cost more than the thing being measured. */
 async function describeOutput(file){
   const bytes = fs.readFileSync(file.path);
-  if(file.name.endsWith(".pdf")){
-    const n = await page.evaluate(async arr => {
-      const pdfjsLib = await window.ilikepdf.loadPdfJs();
-      return (await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise).numPages;
-    }, [...bytes]);
-    return `${n}p`;
+  const mb = (bytes.length / 1048576).toFixed(1) + "MB";
+  try{
+    if(file.name.endsWith(".pdf")){
+      const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      return `${doc.getPageCount()}p ${mb}`;
+    }
+    if(file.name.endsWith(".zip")){
+      const zip = await JSZip.loadAsync(bytes);
+      return `zip×${Object.keys(zip.files).length} ${mb}`;
+    }
+  }catch(e){
+    return `${path.extname(file.name).slice(1)} ${mb} (unreadable: ${e.message.slice(0, 30)})`;
   }
-  if(file.name.endsWith(".zip")){
-    const n = await page.evaluate(async arr => {
-      const JSZip = await window.ilikepdf.loadZip();
-      return Object.keys((await JSZip.loadAsync(new Uint8Array(arr))).files).length;
-    }, [...bytes]);
-    return `zip×${n}`;
-  }
-  return path.extname(file.name).slice(1);
+  return `${path.extname(file.name).slice(1)} ${mb}`;
 }
 
 async function run(tool, pdf){
@@ -145,6 +153,20 @@ async function run(tool, pdf){
 }
 
 const rows = [];
+const REPORT = path.join(ROOT, "tmp/real-report.md");
+
+/* Rewritten after every run, not once at the end. A sweep this long will
+   sometimes die in the middle, and losing forty minutes of results because the
+   last one crashed is how a diagnostic stops being worth running. */
+function writeReport(){
+  fs.writeFileSync(REPORT, [
+    "# Phase 10 sweep", "", `Run ${new Date().toISOString()} against \`${BASE}\`.`,
+    `${rows.length} of ${FILES.length * Object.keys(TOOLS).length} runs.`, "",
+    "| file | tool | result | ms | console | note |", "|---|---|---|---:|---:|---|",
+    ...rows.map(r => `| ${r.pdf} | ${r.tool} | ${r.result} | ${r.ms} | ${r.errs || ""} | ${r.note.replace(/\|/g, "\\|")} |`)
+  ].join("\n") + "\n");
+}
+
 console.log(`\nphase 10 sweep — ${FILES.length} files × ${Object.keys(TOOLS).length} tools, ${BUDGET / 1000}s budget each\n`);
 
 for(const pdf of FILES){
@@ -158,6 +180,7 @@ for(const pdf of FILES){
       row = { tool, pdf, note: "", result: "FAIL: " + e.message.split("\n")[0].slice(0, 60), ms: 0, errs: 0 };
     }
     rows.push(row);
+    writeReport();
     const flag = /FAIL|REFUSED|BLOCKED/.test(row.result) ? "  <<<" : "";
     console.log(`   ${row.tool.padEnd(13)} ${String(row.result).padEnd(28)} ${String(row.ms + "ms").padStart(8)}` +
                 `${row.errs ? "  " + row.errs + " console err" : ""}${flag}`);
@@ -165,11 +188,7 @@ for(const pdf of FILES){
   }
 }
 
-/* The report, so a finding can be quoted into NEXT.md rather than re-derived. */
-const md = ["# Phase 10 sweep", "", `Run ${new Date().toISOString()} against \`${BASE}\`.`, "",
-  "| file | tool | result | ms | console | note |", "|---|---|---|---:|---:|---|",
-  ...rows.map(r => `| ${r.pdf} | ${r.tool} | ${r.result} | ${r.ms} | ${r.errs || ""} | ${r.note.replace(/\|/g, "\\|")} |`)];
-fs.writeFileSync(path.join(ROOT, "tmp/real-report.md"), md.join("\n") + "\n");
+writeReport();
 
 const bad = rows.filter(r => /FAIL|REFUSED|BLOCKED/.test(r.result));
 console.log(`\n${rows.length} runs, ${bad.length} not a clean export. Report: tmp/real-report.md`);

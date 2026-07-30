@@ -25,9 +25,12 @@ let failure = "";    // why the last attempt failed; cleared by the next one
    merge failed. That was 9.1; this is the same shape of fix. */
 function showNotes(){
   const named = flag => store.list().filter(f => f[flag]).map(f => f.name);
-  const forms = named("form"), signed = named("signed");
+  const forms = named("form"), signed = named("signed"), blind = named("unreadable");
   panel.setError(failure || [
     notes,
+    blind.length ? (blind.length === 1 ? `"${blind[0]}" can't be previewed here` :
+                    `${blind.length} of these files can't be previewed here`) +
+                   " — pdf-lib is more forgiving than the preview, so it will still be merged." : "",
     signed.length ? signedWarning(signed, "merged") : "",
     forms.length ? formWarning(forms, "merged") : ""
   ].filter(Boolean).join(" "));
@@ -41,7 +44,9 @@ const grid = mountGrid($("grid"), {
   items: () => store.list().map(f => ({
     id: f.id,
     label: f.name,
-    meta: (f.pages === null ? "reading…" : plural(f.pages, "page")) + " · " + fileSize(f.size),
+    meta: (f.unreadable ? "can't preview"
+         : f.pages === null ? "reading…"
+         : plural(f.pages, "page")) + " · " + fileSize(f.size),
     thumb: f.thumb
   })),
   reorder: (from, to) => store.moveTo(from, to),   // notifies, which refreshes us
@@ -113,9 +118,13 @@ async function intake(fileList){
 /* ---------- panel state ---------- */
 store.subscribe(files => {
   const pages = files.reduce((n, f) => n + (f.pages || 0), 0);
+  // A file we couldn't preview still merges, so the total is a floor, not a
+  // count. Saying "3" and handing back 4 pages is worse than saying "3+".
+  const blind = files.filter(f => f.unreadable).length;
   panel.setSummary(
     "Files selected: <strong>" + files.length + "</strong><br>" +
-    "Pages in result: <strong>" + (pages || "—") + "</strong>"
+    "Pages in result: <strong>" + (pages || "—") + (blind ? "+" : "") + "</strong>" +
+    (blind ? " <span class='zip-note'>(" + blind + " not previewed)</span>" : "")
   );
   const enough = files.length >= 2;
   panel.setEnabled(enough, enough ? "Merge PDF" : "Add one more PDF");

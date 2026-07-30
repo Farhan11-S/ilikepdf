@@ -32,6 +32,11 @@ export async function hydrate(entry){
     Object.assign(entry, await inspectFields(doc));
     entry.thumb = await renderPage(await doc.getPage(1));
   }catch(e){
+    /* "Couldn't read it at all" is not the same as "read it, it has no pages",
+       and merge depends on the difference: pdf-lib is more tolerant than pdf.js
+       and will happily merge a file pdf.js refused to open, so reporting it as
+       an empty document makes the page count merge promises a lie (10.5). */
+    if(entry.pages === null) entry.unreadable = true;
     entry.pages = entry.pages || 0;
   }
   return entry;

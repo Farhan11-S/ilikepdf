@@ -297,6 +297,55 @@ check("a signed PDF is called out", /digitally signed/i.test(mergeSig), JSON.str
 check("and is not accused of having form fields", !/form fields/i.test(mergeSig));
 check("the warning doesn't block the merge", !(await page.locator(".btn-action").isDisabled()));
 
+// --- 15. a file the preview can't read is still merged, and said so --------
+/* pdf-lib is more forgiving than pdf.js, so merge can and does merge files the
+   other six tools refuse — found by the phase 10 sweep on an encrypted PDF.
+   That is worth keeping; what wasn't is that the card read "0 pages" and the
+   summary promised a total the export then exceeded.
+
+   `encrypted.pdf` is the real thing rather than a simulation: 2.7 KB, copied
+   from mozilla/pdf.js's test corpus as encrypted-attachment.pdf (its URL and
+   hash are in tests/real-corpus.json). pdf.js refuses it and pdf-lib merges it,
+   which is exactly the split this tests. Patching pdf.js was tried first and
+   cannot work — getDocument is a non-configurable getter, so the assignment
+   silently does nothing and the test passes for the wrong reason. */
+const blindNoise = consoleErrors.length;
+await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/encrypted.pdf`]);   // 3 pages + 1
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".card").length === 2);
+await page.waitForFunction(() =>
+  [...document.querySelectorAll(".card .meta")].some(m => m.textContent.includes("can't preview")),
+  null, { timeout: 15000 });
+
+const blindMetas = await page.locator(".card .meta").allTextContents();
+check("an unreadable file says so instead of '0 pages'",
+  blindMetas.some(m => m.includes("can't preview")) && !blindMetas.some(m => m.startsWith("0 pages")),
+  JSON.stringify(blindMetas));
+
+const blindSummary = (await page.locator(".summary").textContent()).replace(/\s+/g, " ");
+check("the page total is marked as a floor, not a count",
+  blindSummary.includes("3+"), blindSummary);
+check("and says how many it couldn't see", /1 not previewed/.test(blindSummary), blindSummary);
+check("the panel explains it will still be merged",
+  /still be merged/i.test(await page.locator(".panel .error").textContent()));
+
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const [blindDl] = await Promise.all([
+  page.waitForEvent("download"),
+  page.locator("#downloadBtn").click()
+]);
+const blindPath = path.join(TMP, "blind-" + blindDl.suggestedFilename());
+await blindDl.saveAs(blindPath);
+const blindPages = await page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  return (await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise).numPages;
+}, [...fs.readFileSync(blindPath)]);
+check("the file we couldn't preview really is in the output", blindPages === 4, blindPages + " pages");
+// pdf.js failing to open it logs; that's the condition under test.
+consoleErrors.length = blindNoise;
+
 check("no console errors", consoleErrors.length === 0, consoleErrors.join(" || "));
 
 await browser.close();
