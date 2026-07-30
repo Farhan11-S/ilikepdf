@@ -7,12 +7,24 @@
  * through before waiting for an acknowledgement. Step 9 fails the build if a
  * page misses it, because a budget nobody enforces is a wish.
  *
- * Each page ships as a single self-contained HTML file, CSS and JS inlined.
- * Shared hosting can't be counted on for HTTP/2, so on a page this small fewer
- * requests beats better caching: the shared code is a few kilobytes, and asking
- * for it separately costs a round trip that dwarfs it.
+ * Note what that budget is and isn't. The congestion window belongs to the
+ * *connection*, not to each file, so splitting one 13 KB response into two 7 KB
+ * ones does not buy a second window — both still draw on the first, and the
+ * second cannot even be requested until the first has arrived. "Every file
+ * under 14 KB" is a weaker property than "the page arrives in one round trip",
+ * and only the first is still true here.
  *
- * The libraries are the exception and stay separate: they are hundreds of
+ * A page ships as HTML with its CSS and its own JS inlined, plus content-hashed
+ * shared chunks alongside. Pages were wholly self-contained until watermark.html
+ * reached 92% of budget; bundling all nine entries together lets esbuild lift
+ * what more than one page uses into chunks that are cached for a year, so the
+ * shared core is paid for once across the site rather than once per page.
+ *
+ * The trade, stated plainly: first paint is unchanged, because the CSS is
+ * inline and a module script is deferred regardless. Time to *interactive* is
+ * one round trip later on a first visit, and free on every later page.
+ *
+ * The libraries are separate for a different reason: they are hundreds of
  * kilobytes, they change only when the pin changes, and they are shared across
  * every page. They get content-hashed names and a year-long immutable cache.
  *
@@ -70,33 +82,115 @@ try{
   fs.rmSync(cssEntry, { force: true });
 }
 
-/* ---------- 4–6. one self-contained file per page ---------- */
+/* ---------- 4. bundle every page in one pass, so the shared core splits out ----
+
+   Pages used to be bundled one at a time and inlined whole, which meant all
+   nine carried their own copy of grid.js, store.js, panel.js and the rest. That
+   was the right trade while the worst page had room: one request beats better
+   caching when the duplicate is a few kilobytes.
+
+   It stopped being the right trade at 92% of budget. Building all the entries
+   together lets esbuild pull what more than one page uses into shared chunks,
+   which are content-hashed and cached for a year, so the duplication is paid
+   for once across the whole site instead of once per page.
+
+   What it costs is honest and worth knowing: the page still paints in one round
+   trip — the CSS is inline and a module script is deferred anyway — but it is
+   interactive one round trip later on a first visit, because the chunks cannot
+   be asked for until the HTML naming them has arrived. The chunk graph is flat
+   (every chunk is imported by the entry, never chunk-to-chunk-to-chunk), so
+   they are all requested in one parallel wave rather than a waterfall. That
+   flatness is a property worth keeping; if a chunk ever imports a chunk that
+   imports a chunk, the second round trip becomes a third. */
 const pages = fs.readdirSync(ROOT).filter(f => f.endsWith(".html"));
 const report = [];
 
+const entryOf = new Map();          // page -> absolute entry path
 for(const page of pages){
-  let html = fs.readFileSync(path.join(ROOT, page), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, page), "utf8");
+  const m = /<script type="module" src="([^"]+)"><\/script>/.exec(html);
+  if(!m) throw new Error(`${page} has no module entry point`);
+  entryOf.set(page, { src: m[1], abs: path.join(ROOT, m[1]), tag: m[0] });
+}
 
-  const entry = /<script type="module" src="([^"]+)"><\/script>/.exec(html);
-  if(!entry) throw new Error(`${page} has no module entry point`);
+const bundled = await esbuild.build({
+  entryPoints: [...entryOf.values()].map(e => e.abs),
+  bundle: true,
+  minify: true,
+  format: "esm",
+  target: "es2020",
+  legalComments: "none",
+  splitting: true,
+  outdir: path.join(DIST, "js"),
+  write: false,
+  metafile: true
+});
 
-  const built = await esbuild.build({
-    entryPoints: [path.join(ROOT, entry[1])],
-    bundle: true,
-    minify: true,
-    format: "esm",
-    target: "es2020",
-    legalComments: "none",
-    write: false
-  });
-  let js = built.outputFiles[0].text;
-
-  // The vendor paths are literal and relative in source precisely so this is a
-  // string replace rather than a resolver.
+/* The vendor paths are literal and relative in source precisely so this is a
+   string replace rather than a resolver. */
+const rewriteVendor = (js, where) => {
   for(const [from, to] of vendorMap) js = js.split(`"${from}"`).join(`"${to}"`);
   for(const from of vendorMap.keys()){
-    if(js.includes(from)) throw new Error(`${page}: unrewritten vendor path ${from}`);
+    if(js.includes(from)) throw new Error(`${where}: unrewritten vendor path ${from}`);
   }
+  return js;
+};
+
+const outputs = new Map(bundled.outputFiles.map(f => [f.path, f.text]));
+const isEntry = new Map();          // output path -> entry source path, for entries only
+for(const [out, info] of Object.entries(bundled.metafile.outputs)){
+  if(info.entryPoint) isEntry.set(path.resolve(ROOT, out), path.resolve(ROOT, info.entryPoint));
+}
+
+/* Hash the chunks, deepest first. A chunk that imports another has to be named
+   after the one it names, or its own hash would be computed over a stale path.
+
+   The map holds bare filenames because the two kinds of importer resolve them
+   against different bases: an entry is inlined into a page at the site root and
+   needs "./js/chunk.x.js", while a chunk is served from /js/ and needs
+   "./chunk.x.js". Getting that wrong asks for /js/js/ and 404s — which is
+   exactly what the first attempt did, and only a tool page showed it, because
+   the home page's chunk imports no other chunk. */
+fs.mkdirSync(path.join(DIST, "js"), { recursive: true });
+const chunkName = new Map();        // "./chunk-ABC.js" (as esbuild wrote it) -> "chunk.<hash>.min.js"
+const inChunk = js => { for(const [from, to] of chunkName) js = js.split(`"${from}"`).join(`"./${to}"`); return js; };
+const inEntry = js => { for(const [from, to] of chunkName) js = js.split(`"${from}"`).join(`"./js/${to}"`); return js; };
+const chunkPaths = [...outputs.keys()].filter(p => !isEntry.has(p));
+const pending = new Set(chunkPaths);
+
+while(pending.size){
+  const ready = [...pending].filter(p => {
+    const info = bundled.metafile.outputs[path.relative(ROOT, p).split(path.sep).join("/")];
+    return info.imports.filter(i => i.kind === "import-statement")
+      .every(i => !pending.has(path.resolve(ROOT, i.path)));
+  });
+  if(!ready.length) throw new Error("chunk imports form a cycle");
+
+  for(const p of ready){
+    const text = inChunk(rewriteVendor(outputs.get(p), path.basename(p)));
+    const bytes = Buffer.from(text);
+    const hashed = `chunk.${createHash(bytes)}.min.js`;
+    write(path.join(DIST, "js", hashed), bytes);
+    chunkName.set(`./${path.basename(p)}`, hashed);
+    outputs.set(p, text);
+    pending.delete(p);
+  }
+}
+
+/* The same reason vendor/ has one: a directory with no index is a listing. */
+fs.writeFileSync(path.join(DIST, "js", "index.html"),
+  '<!doctype html><title>ilikepdf</title><a href="../">← ilikepdf</a>\n');
+
+/* ---------- 5–6. one page per file, entry inlined, chunks alongside ---------- */
+for(const page of pages){
+  let html = fs.readFileSync(path.join(ROOT, page), "utf8");
+  const entry = entryOf.get(page);
+
+  const outPath = [...isEntry.entries()].find(([, src]) => src === entry.abs)?.[0];
+  if(!outPath) throw new Error(`${page}: no bundle produced for ${entry.src}`);
+
+  const js = inEntry(rewriteVendor(outputs.get(outPath), page));
+  if(/["']\.\/chunk-/.test(js)) throw new Error(`${page}: unrewritten chunk import`);
 
   /* Minify the page with placeholders where the code will go, and only then
      substitute. Minified JS is full of things an HTML parser will try to read
@@ -105,7 +199,7 @@ for(const page of pages){
   html = html
     .replace(/\s*<link rel="stylesheet" href="css\/[^"]+">/g, "")
     .replace(/<\/head>/, "<style>/*__CSS__*/</style></head>")
-    .replace(entry[0], '<script type="module">/*__JS__*/</script>');
+    .replace(entry.tag, '<script type="module">/*__JS__*/</script>');
 
   html = await minifyHtml(html, {
     collapseWhitespace: true,
@@ -131,6 +225,9 @@ for(const name of fs.readdirSync(path.join(DIST, "vendor"))){
   compress(p, fs.readFileSync(p));
 }
 compress(path.join(DIST, "favicon.svg"), fs.readFileSync(path.join(DIST, "favicon.svg")));
+// The chunks were compressed by write(); their index page was not.
+compress(path.join(DIST, "js", "index.html"),
+  fs.readFileSync(path.join(DIST, "js", "index.html")));
 
 /* ---------- 8. .htaccess ---------- */
 fs.writeFileSync(path.join(DIST, ".htaccess"), htaccess());

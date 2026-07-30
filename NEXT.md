@@ -32,8 +32,12 @@ only thing broken.
 
 **The build is honest and enforced.** Order is minify → inline → brotli, so the
 `.br` files are compression of already-minified bytes; nothing is double-handled.
-Worst page is `watermark.html` at **13,226 B brotli against a 14,336 B budget
-(92%)**, and `build.mjs` exits non-zero if any page misses.
+Worst page is `watermark.html` at **8,227 B brotli against a 14,336 B budget
+(57%)**, and `build.mjs` exits non-zero if any page misses.
+
+Pages no longer carry the whole core: since 12.3 the nine entries are bundled in
+one pass and what more than one page uses is lifted into content-hashed shared
+chunks in `dist/js/`, cached for a year.
 
 Measured, in case anyone proposes dropping minification because "brotli does it
 anyway" — it does, mostly, but not enough:
@@ -45,7 +49,9 @@ anyway" — it does, mostly, but not enough:
 | minifying saves | 17,198 | 2,260 | **1,910 (13.5%)** |
 
 Unminified, the worst page lands at 98% of budget. Minification is buying
-headroom for the next feature, not bandwidth.
+headroom for the next feature, not bandwidth. (Those figures were measured
+before 12.3 split the core out, so the absolute numbers are historical — the
+ratio is the point and it hasn't moved.)
 
 ---
 
@@ -677,6 +683,67 @@ could not test the missing-glyph path.
 there without a font, that a non-font file is refused with a message rather than
 throwing, and that the mark really lands on every page.
 
+### 12.3 The shared core moved out of every page — DONE (2026-07-30)
+
+12.2 left `watermark.html` at 92% of budget with 1,110 bytes spare, which is not
+enough for another feature. Soyae proposed splitting shared JS into its own
+file, and the proposal was right — though **the reason given for it was not**,
+and the difference matters enough to write down.
+
+**The budget is per connection, not per file.** TCP's initial congestion window
+(~10 segments, ≈14,480 B) belongs to the *connection*. Splitting one 13 KB
+response into two 7 KB ones does not buy a second window: both draw on the
+first, and the second cannot even be requested until the first has arrived and
+been parsed. So "every file under 14 KB" is a strictly weaker property than "the
+page arrives in one round trip", and only the first is still true. Production is
+**HTTP/1.1**, so there is no multiplexing to soften it either.
+
+What splitting actually buys is **cache reuse across pages**, and it is worth
+having:
+
+| | before | after |
+|---|---|---|
+| `watermark.html` | 13,226 (92%) | **8,227 (57%)** |
+| `split.html` | 11,912 | 7,099 |
+| `merge.html` | 11,140 | 5,921 |
+| shared chunks | — | 5 files, 6,711 B total, cached a year |
+| first paint | RTT 1 | **RTT 1** |
+| interactive | RTT 1 | RTT 2 on a first visit, RTT 1 thereafter |
+
+**First paint is genuinely unchanged.** The CSS is still inline and a module
+script is deferred regardless, so the page renders on the first round trip
+either way. What moves is time to interactive, and only on a first visit —
+which also means the header and footer, injected by `chrome.js`, are briefly
+empty. The shells keep the 64px height, so nothing jumps.
+
+**esbuild produces five chunks, not one**, because different subsets of pages
+share different modules — `place.js` by two, `images.js` by two, the core by
+eight. That was left alone rather than forced into a single barrel: the graph is
+**flat** (every chunk is imported by the entry, only one imports another that
+the entry already names), so they are fetched in one parallel wave, not a
+waterfall. Five files also means finer cache invalidation. **If a chunk ever
+imports a chunk that imports a chunk, that second round trip becomes a third** —
+that flatness is the property to protect, and there is a comment in `build.mjs`
+saying so.
+
+**The bug this shook out** is worth remembering because it only showed on a tool
+page. Chunk filenames are rewritten in two places that resolve them against
+different bases: an entry is inlined into a page at the site root and needs
+`./js/chunk.x.js`, while a chunk is served from `/js/` and needs `./chunk.x.js`.
+Using one map for both asked for `/js/js/…` and 404'd. `index.html` passed
+anyway, because the home page's chunk imports no other chunk — so a smoke test
+of the landing page alone would have called this green.
+
+Verified beyond the suites: `dist/` still works served from a subdirectory,
+which the chunk imports could easily have broken, and the year-long immutable
+`Cache-Control` already matches `chunk.<hash>.min.js` without touching the
+`.htaccess` rule.
+
+**The next lever, if it is ever needed, is the shared CSS** — 3,850 B on every
+page. Do it knowing it is a *worse* trade than this one: CSS is render-blocking,
+so extracting it costs a round trip to first paint rather than to interactive.
+README used to recommend it first; that advice was wrong and has been fixed.
+
 ---
 
 ## Deliberately not doing
@@ -740,6 +807,7 @@ Learned the hard way; all of these are load-bearing.
 10.2-10.6 the sweep         DONE      2026-07-30  (4 of 5 were non-problems)
 10.7 digital signatures     DONE      2026-07-30  (not predicted; all 6 tools)
 12.2 font embedding         DONE      2026-07-30  (fontkit was 2x the estimate)
+12.3 split the shared core  DONE      2026-07-30  (worst page 92% -> 57%)
 ```
 
 **Everything on the list is done.** The next work is whatever the next request

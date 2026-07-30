@@ -62,22 +62,34 @@ to wait for an acknowledgement. The build prints a raw/gzip/brotli table and
 
 What it does:
 
-- Bundles and minifies each page's JS with esbuild, the CSS with lightningcss,
-  and **inlines both** into the HTML. Shared hosting can't be counted on for
-  HTTP/2, so on pages this small fewer requests beats better caching.
+- Bundles all nine page entries with esbuild in one pass, so what more than one
+  page uses is lifted into **content-hashed shared chunks** served from `js/`.
+  Each page inlines its own remaining JS and the shared CSS; the chunks are
+  cached for a year, so the core is downloaded once for the whole site.
+- **The budget is per connection, not per file.** TCP's congestion window
+  belongs to the connection, so two 7 KB files are not two round trips' worth of
+  headroom — the second can't even be requested until the first arrives. What
+  splitting buys is cache reuse across pages, not a bigger first window. First
+  paint is unchanged (CSS inline, module scripts deferred); time to interactive
+  is one round trip later on a first visit.
 - Gives each `vendor/` file a content-hashed name and rewrites the references —
   which is a string replace, and why the paths in source are literal, relative
   and never built up from variables.
 - Writes `.br` and `.gz` beside every text file. Shared hosting often has no
   `mod_brotli`, but Apache will serve a copy we compressed ourselves.
 - Emits an `.htaccess` that serves those by `Accept-Encoding`, caches the hashed
-  vendor files for a year and the pages not at all, and wraps every block in
+  vendor files and shared chunks for a year and the pages not at all, and wraps
+  every block in
   `<IfModule>` so a host missing a module serves plain files instead of a 500.
 
 Paths are relative throughout, so `dist/` works from a subdirectory as well as a
-domain root. If a page ever busts the budget, pull the shared CSS out to one
-cached file before trying anything cleverer — it's the cheapest lever and costs
-one request.
+domain root — including the chunk imports, which is worth re-checking if that
+path layer ever changes.
+
+If a page ever busts the budget again, the shared **CSS** is the next lever
+(3,850 B on every page). Do it knowing it is a worse trade than the JS split
+was: CSS is render-blocking, so extracting it costs a round trip to *first
+paint* rather than to interactive.
 
 ## Tools
 
@@ -116,6 +128,7 @@ vendor/             the four libraries, committed
 build.mjs           builds dist/ — inlines, hashes, compresses, checks the budget
 scripts/vendor.mjs  refreshes vendor/ from node_modules
 dist/               build output, gitignored — the only thing uploaded
+dist/js/            content-hashed shared chunks, cached a year
 css/tokens.css      design tokens, reset, button primitives
 css/app.css         header, footer, hero, tool grid, workspace, cards, panel
 js/core/tools.js    the tool registry
