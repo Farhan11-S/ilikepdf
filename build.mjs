@@ -105,7 +105,21 @@ try{
 const pages = fs.readdirSync(ROOT).filter(f => f.endsWith(".html"));
 const report = [];
 
-const entryOf = new Map();          // page -> absolute entry path
+/* index.html is built on its own, unsplit, so it carries its whole entry inline
+   and paints its grid the moment the HTML parses.
+
+   It is the one page where the split was a straight loss. `<main id="toolGrid">`
+   is empty in the source — home.js draws the cards — so once the core moved into
+   a chunk, the landing page committed in 175 ms on a 150 ms link and then showed
+   nothing for another 283 ms. Every other page has a hero and a working file
+   picker to look at while its chunks arrive; this one has an empty box.
+
+   The cost is that index duplicates the core it also prefetches below. That is
+   the trade being made on purpose: about a kilobyte on one page, to stop the
+   first thing anyone sees being blank. */
+const SOLO = new Set(["index.html"]);
+
+const entryOf = new Map();          // page -> {src, abs, tag}
 for(const page of pages){
   const html = fs.readFileSync(path.join(ROOT, page), "utf8");
   const m = /<script type="module" src="([^"]+)"><\/script>/.exec(html);
@@ -113,8 +127,9 @@ for(const page of pages){
   entryOf.set(page, { src: m[1], abs: path.join(ROOT, m[1]), tag: m[0] });
 }
 
+const shared = pages.filter(p => !SOLO.has(p));
 const bundled = await esbuild.build({
-  entryPoints: [...entryOf.values()].map(e => e.abs),
+  entryPoints: shared.map(p => entryOf.get(p).abs),
   bundle: true,
   minify: true,
   format: "esm",
@@ -125,6 +140,17 @@ const bundled = await esbuild.build({
   write: false,
   metafile: true
 });
+
+/* The solo pages, each bundled whole. */
+const soloJs = new Map();           // page -> bundled text
+for(const page of SOLO){
+  const built = await esbuild.build({
+    entryPoints: [entryOf.get(page).abs],
+    bundle: true, minify: true, format: "esm", target: "es2020",
+    legalComments: "none", write: false
+  });
+  soloJs.set(page, built.outputFiles[0].text);
+}
 
 /* The vendor paths are literal and relative in source precisely so this is a
    string replace rather than a resolver. */
@@ -181,15 +207,52 @@ while(pending.size){
 fs.writeFileSync(path.join(DIST, "js", "index.html"),
   '<!doctype html><title>ilikepdf</title><a href="../">← ilikepdf</a>\n');
 
+/* Everything a tool page will ask for, so the landing page can fetch it while
+   the visitor is still deciding which tool they want.
+
+   `prefetch` rather than `modulepreload` on purpose: this is for the *next*
+   navigation, so it belongs at idle priority behind anything this page needs.
+   It pays off because the chunks are content-hashed and served `immutable` —
+   a warmed chunk is used outright, with no revalidation round trip. Pages are
+   `no-cache` and would not behave that way, which is why this warms the chunks
+   and leaves the documents to the speculation rules below. */
+const warm = [...new Set(shared.flatMap(p => {
+  const out = [...isEntry.entries()].find(([, src]) => src === entryOf.get(p).abs)?.[0];
+  const rel = path.relative(ROOT, out).split(path.sep).join("/");
+  return bundled.metafile.outputs[rel].imports
+    .filter(i => i.kind === "import-statement")
+    .map(i => chunkName.get(`./${path.basename(i.path)}`));
+}))].filter(Boolean).sort();
+
+const preload = warm.map(n => `<link rel="prefetch" as="script" href="js/${n}">`).join("");
+
+/* Chrome and Edge prerender the card under the cursor; everything else ignores
+   an unknown script type and falls back to the prefetched chunks above.
+
+   `selector_matches` rather than a list of URLs so js/core/tools.js stays the
+   only place a tool is declared — and because the cards are drawn by JS, which
+   document rules cope with by re-evaluating as the DOM changes.
+
+   Prerendering runs the target page. That is safe here and worth re-checking if
+   it ever stops being: a tool page on load only mounts its grid, panel and
+   dropzone, and nothing reads a file until the user picks one. */
+const speculation = '<script type="speculationrules">' +
+  JSON.stringify({ prerender: [{ where: { selector_matches: ".tool-card" }, eagerness: "moderate" }] }) +
+  "</script>";
+
 /* ---------- 5–6. one page per file, entry inlined, chunks alongside ---------- */
 for(const page of pages){
   let html = fs.readFileSync(path.join(ROOT, page), "utf8");
   const entry = entryOf.get(page);
 
-  const outPath = [...isEntry.entries()].find(([, src]) => src === entry.abs)?.[0];
-  if(!outPath) throw new Error(`${page}: no bundle produced for ${entry.src}`);
-
-  const js = inEntry(rewriteVendor(outputs.get(outPath), page));
+  let js;
+  if(SOLO.has(page)){
+    js = rewriteVendor(soloJs.get(page), page);
+  }else{
+    const outPath = [...isEntry.entries()].find(([, src]) => src === entry.abs)?.[0];
+    if(!outPath) throw new Error(`${page}: no bundle produced for ${entry.src}`);
+    js = inEntry(rewriteVendor(outputs.get(outPath), page));
+  }
   if(/["']\.\/chunk-/.test(js)) throw new Error(`${page}: unrewritten chunk import`);
 
   /* Minify the page with placeholders where the code will go, and only then
@@ -198,8 +261,9 @@ for(const page of pages){
      minified anyway, so there is nothing to gain by showing it to this parser. */
   html = html
     .replace(/\s*<link rel="stylesheet" href="css\/[^"]+">/g, "")
-    .replace(/<\/head>/, "<style>/*__CSS__*/</style></head>")
-    .replace(entry.tag, '<script type="module">/*__JS__*/</script>');
+    .replace(/<\/head>/, (SOLO.has(page) ? preload : "") + "<style>/*__CSS__*/</style></head>")
+    .replace(entry.tag, '<script type="module">/*__JS__*/</script>' +
+                        (SOLO.has(page) ? speculation : ""));
 
   html = await minifyHtml(html, {
     collapseWhitespace: true,

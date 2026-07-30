@@ -103,6 +103,71 @@ check("footer is pinned to the bottom on a short page", await page.evaluate(() =
   return Math.abs(f.bottom - window.innerHeight) < 2;
 }));
 
+// --- the landing page does not wait on a chunk to draw itself --------------
+/* 12.3 moved the shared core into chunks and cost this page its content on the
+   first round trip: `<main id="toolGrid">` is empty in the source, home.js draws
+   the cards, and once home.js needed a chunk the page committed and then showed
+   nothing for another 283 ms on a 150 ms link. The suites all passed, because
+   they assert *that* the grid renders and never *when*.
+
+   Blocking the chunks and requiring the grid anyway is the deterministic form of
+   that question — no timing threshold to go flaky on a slow machine. It holds
+   against source too, which has no chunks at all. */
+const blockMark = errors.length;
+await page.route("**/js/chunk*", r => r.abort());
+await page.goto(BASE + "/index.html", { waitUntil: "commit" });
+const drewBlind = await page.waitForSelector(".tool-card", { timeout: 10000 })
+  .then(() => true).catch(() => false);
+check("the tool grid renders without fetching a chunk", drewBlind);
+check("and renders every ready tool",
+  (await page.locator(".tool-card").count()) === READY.length,
+  `${await page.locator(".tool-card").count()} of ${READY.length}`);
+await page.unroute("**/js/chunk*");
+// The blocked prefetches log; refusing them was the point of the test.
+errors.length = blockMark;
+
+// --- what the built page does to make the next page feel instant -----------
+await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+/* Source links its stylesheet; the build inlines it. Everything below is
+   build-only, so this is how the test knows which it is looking at rather than
+   branching on the URL it was given. */
+const isBuilt = await page.evaluate(() => !document.querySelector("link[rel=stylesheet]"));
+
+const prefetched = await page.evaluate(() =>
+  [...document.querySelectorAll('link[rel="prefetch"]')].map(l => l.getAttribute("href")));
+if(isBuilt){
+  check("the built landing page prefetches the shared chunks", prefetched.length > 0,
+    prefetched.length + " links");
+  let allThere = true;
+  for(const href of prefetched){
+    const res = await page.request.get(new URL(href, BASE + "/").href);
+    if(res.status() !== 200) allThere = false;
+  }
+  check("every prefetched chunk exists", allThere, prefetched.join(" "));
+  check("they are the chunks a tool page actually asks for",
+    prefetched.every(h => /^js\/chunk\.[a-z0-9]{8}\.min\.js$/.test(h)), prefetched.join(" "));
+}
+
+/* Prerendering itself is deliberately not asserted: the CDP Preload domain can
+   observe it, but it is timing-dependent and would be flaky. What is worth
+   pinning is that the rules are well-formed and point at something real — a
+   selector that matched nothing would fail silently in the browser. */
+const rules = await page.evaluate(() => {
+  const el = document.querySelector('script[type="speculationrules"]');
+  return el ? el.textContent : null;
+});
+if(isBuilt){
+  check("the built landing page ships speculation rules", !!rules);
+  let parsed = null;
+  try{ parsed = JSON.parse(rules); }catch{ /* left null, checked below */ }
+  check("the rules are valid JSON", !!parsed, String(rules).slice(0, 60));
+  check("they prerender on hover",
+    parsed?.prerender?.[0]?.eagerness === "moderate", JSON.stringify(parsed));
+  const sel = parsed?.prerender?.[0]?.where?.selector_matches;
+  check("their selector matches real links on the page",
+    !!sel && (await page.locator(sel).count()) > 0, `${sel} matched ${await page.locator(sel).count()}`);
+}
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();
