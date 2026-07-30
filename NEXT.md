@@ -149,7 +149,7 @@ in this file, and only add a fixture if it's small and reproducible.
 ## Phase 11 — Deployed and verified (2026-07-30)
 
 Live at **https://ilikepdf.muriacare.my.id** — Apache 2.4.58 on Ubuntu, docroot
-`/root/ilikepdf`, `AllowOverride All`. The `.htaccess` is no longer untested by
+`/var/www/ilikepdf`, `AllowOverride All`. The `.htaccess` is no longer untested by
 construction, and testing it immediately found two bugs in it.
 
 ### Both failure modes in the old warning actually happened
@@ -228,20 +228,34 @@ npm run build
 tar -czf dist.tar.gz -C dist .          # -C dist . so .htaccess is included
 scp dist.tar.gz root@HOST:/tmp/
 ssh root@HOST 'set -e
-  rm -rf /root/ilikepdf.new && mkdir -p /root/ilikepdf.new
-  tar -xzf /tmp/dist.tar.gz -C /root/ilikepdf.new
-  mv /root/ilikepdf /root/ilikepdf.bak-$(date +%Y%m%d-%H%M%S)
-  mv /root/ilikepdf.new /root/ilikepdf'
+  rm -rf /var/www/ilikepdf.new && mkdir -p /var/www/ilikepdf.new
+  tar -xzf /tmp/dist.tar.gz -C /var/www/ilikepdf.new
+  chown -R root:root /var/www/ilikepdf.new
+  find /var/www/ilikepdf.new -type d -exec chmod 755 {} +
+  find /var/www/ilikepdf.new -type f -exec chmod 644 {} +
+  mv /var/www/ilikepdf /var/www/ilikepdf.bak-$(date +%Y%m%d-%H%M%S)
+  mv /var/www/ilikepdf.new /var/www/ilikepdf'
 ```
 
 Rolling back is `mv` in the other direction; the previous deploy is kept as
-`/root/ilikepdf.bak-*`. Clear old ones out occasionally, each is ~3.5 MB.
+`/var/www/ilikepdf.bak-*`. Clear old ones out occasionally, each is ~3.7 MB.
+
+**`AllowOverride All` is load-bearing and easy to lose.** Ubuntu's
+`apache2.conf` ships `<Directory /var/www/> AllowOverride None`, so the
+per-vhost `<Directory /var/www/ilikepdf>` block is the only reason `.htaccess`
+is read at all. Move the docroot without moving that block and the site keeps
+working — just uncompressed, with no cache headers, and nothing to tell you.
+
+Moved off `/root/ilikepdf` on 2026-07-30: serving out of root's home only
+worked because `/root` is `drwx--x`, one `chmod` away from publishing the whole
+home directory. Both vhosts (`:80` and `:443`) were updated together — the
+`DocumentRoot` *and* the `<Directory>` block.
 
 ### Still worth doing
 
-- **`DocumentRoot /root/ilikepdf`.** It works because `/root` is `drwx--x`, but
-  serving out of root's home is a sharp edge — one `chmod` and the whole home
-  directory is public. `/var/www/ilikepdf` costs nothing to move to.
+- **`https://muriacare.my.id` has no `:443` vhost**, so it lands on ilikepdf's
+  SSL vhost and fails the certificate name check. Pre-existing, unrelated to
+  this site, but it is a broken URL. Port 80 is fine.
 - The error log is full of `wp-login.php` probes. Harmless against a static
   site, just noise.
 
