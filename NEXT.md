@@ -211,14 +211,31 @@ curl -sI -H 'Accept-Encoding: gzip, deflate, br' https://ilikepdf.muriacare.my.i
 - Hashed vendor files return `immutable`; `.html` returns `no-cache`.
 - `vendor/` serves its index instead of a listing, with vhost `Options Indexes`
   on — which is what 9.3 traded the `Options -Indexes` line for.
-- **165 assertions (home, rotate, organize) pass against the live site**, so
-  pdf.js really does load and render through the brotli path. The suites take
-  any `BASE`, and pointing them at production is the cheapest end-to-end check
-  there is:
+- **All 460 assertions pass against the live site.** The suites take any
+  `BASE`, and pointing them at production is the cheapest end-to-end check
+  there is — it exercises the brotli path, real TLS, and pdf.js actually
+  rendering, none of which `python3 -m http.server` can tell you:
 
 ```sh
-BASE=https://ilikepdf.muriacare.my.id node tests/home.smoke.mjs
+BASE=https://ilikepdf.muriacare.my.id npm test
 ```
+
+Deploy is a staged swap, so `.html` and `.html.br` are never briefly out of
+step with each other:
+
+```sh
+npm run build
+tar -czf dist.tar.gz -C dist .          # -C dist . so .htaccess is included
+scp dist.tar.gz root@HOST:/tmp/
+ssh root@HOST 'set -e
+  rm -rf /root/ilikepdf.new && mkdir -p /root/ilikepdf.new
+  tar -xzf /tmp/dist.tar.gz -C /root/ilikepdf.new
+  mv /root/ilikepdf /root/ilikepdf.bak-$(date +%Y%m%d-%H%M%S)
+  mv /root/ilikepdf.new /root/ilikepdf'
+```
+
+Rolling back is `mv` in the other direction; the previous deploy is kept as
+`/root/ilikepdf.bak-*`. Clear old ones out occasionally, each is ~3.5 MB.
 
 ### Still worth doing
 
