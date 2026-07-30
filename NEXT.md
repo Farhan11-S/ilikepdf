@@ -146,36 +146,87 @@ in this file, and only add a fixture if it's small and reproducible.
 
 ---
 
-## Phase 11 — Deploy, then verify the parts that can't be tested locally
+## Phase 11 — Deployed and verified (2026-07-30)
 
-`dist/` has never been served by Apache. There is no Apache in the dev
-container, so the whole `.htaccess` is **untested by construction** — the suites
-run against `python3 -m http.server`, which ignores it entirely.
+Live at **https://ilikepdf.muriacare.my.id** — Apache 2.4.58 on Ubuntu, docroot
+`/root/ilikepdf`, `AllowOverride All`. The `.htaccess` is no longer untested by
+construction, and testing it immediately found two bugs in it.
 
-1. Upload `dist/` (or `dist.zip`, which cPanel's file manager unpacks).
-2. **Confirm compression is actually happening**, because the entire byte budget
-   rests on it:
-   ```sh
-   curl -sI -H 'Accept-Encoding: br' https://YOURSITE/watermark.html | grep -i 'content-encoding\|vary'
-   ```
-   Expect `content-encoding: br` and `vary: Accept-Encoding`. If it's missing,
-   the rewrite isn't firing and you're serving 42 KB instead of 12 KB — the site
-   still works, so nothing will alert you.
-3. **Confirm nothing is double-encoded.** If a browser shows binary garbage, the
-   `.br` is being served without `Content-Encoding` — that's the failure mode to
-   watch for, and it breaks the page completely.
-4. Check caching: a hashed `vendor/*.min.js` should return
-   `cache-control: public, max-age=31536000, immutable`; `.html` should return
-   `no-cache`.
-5. Load a tool on a real phone. The panel becomes a fixed bottom sheet under
-   900px and the touch reorder buttons only exist under `hover:none` — both are
-   only ever exercised by an emulated viewport in CI.
+### Both failure modes in the old warning actually happened
 
-If the host turns out to have no `mod_rewrite` or no `mod_headers`, the
-`<IfModule>` guards mean it degrades to serving the uncompressed files. That's
-fine and expected — you lose the budget, not the site.
+The first deploy served **binary garbage**, exactly as this file predicted. Two
+independent causes, and neither is visible from a status code — the site
+returned 200 throughout.
 
----
+**1. mod_headers was not enabled.** `mod_rewrite` was, so the rewrite happily
+served `pdf.min.js.br` while the `<IfModule mod_headers.c>` block — the thing
+that adds `Content-Encoding: br` — was skipped entirely. The browser got brotli
+bytes labelled `application/javascript`. This is the default Ubuntu Apache
+install, not an exotic host: **mod_rewrite is enabled out of the box and
+mod_headers is not.**
+
+The old `.htaccess` guarded the two modules *independently*, which quietly
+assumed that rewriting without labelling was a survivable state. It isn't — it
+is the one combination that must never happen. The rewrite now lives **inside**
+the mod_headers guard, so a host with one and not the other serves plain files.
+
+**2. mod_deflate re-compressed the pre-compressed response.** Even with
+mod_headers on, `AddOutputFilterByType DEFLATE text/html …` (Ubuntu's default
+`deflate.conf`) gzipped the `.br`/`.gz` payload a second time while
+`Content-Encoding` still claimed one layer. The tell was a served
+`Content-Length` of 89,039 for an on-disk `.gz` of 89,006 — bigger, because
+gzipping gzip does not compress. Browsers send `gzip, deflate, br`, so this hit
+every request, not an edge case.
+
+Fixed by setting `no-gzip` and `no-brotli` on the rewrite itself
+(`[E=no-gzip:1,E=no-brotli:1]`). It has to be done there: `SetEnvIf` sees the
+original URI, before the rewrite, so it never matches the `.br` name.
+
+### Server-side changes made
+
+Only one, and it is global to the box (which also hosts `muriacare.my.id`):
+
+```sh
+a2enmod headers && apache2ctl configtest && systemctl reload apache2
+```
+
+`mod_brotli` is loaded but its `brotli.conf` is **not** symlinked into
+`mods-enabled`, so there is no on-the-fly brotli. That is deliberate and should
+stay that way — every text file ships a `.br` built at quality 11, on-the-fly
+would be quality 5 and cost CPU per request, and adding the filter re-opens the
+double-compression hole above.
+
+### Verified against the live site
+
+```sh
+curl -sI -H 'Accept-Encoding: gzip, deflate, br' https://ilikepdf.muriacare.my.id/watermark.html
+#   Content-Encoding: br · Content-Length: 12259 · Cache-Control: no-cache
+```
+
+- `Content-Length` matching the on-disk `.br` byte-for-byte is the check that
+  catches double compression. When it was broken the response was chunked with
+  no `Content-Length` at all, which is easy to skim past.
+- All three encodings (`identity`, `br`, `gzip`) decode to identical bytes
+  across pages, favicon and vendor bundles.
+- Hashed vendor files return `immutable`; `.html` returns `no-cache`.
+- `vendor/` serves its index instead of a listing, with vhost `Options Indexes`
+  on — which is what 9.3 traded the `Options -Indexes` line for.
+- **165 assertions (home, rotate, organize) pass against the live site**, so
+  pdf.js really does load and render through the brotli path. The suites take
+  any `BASE`, and pointing them at production is the cheapest end-to-end check
+  there is:
+
+```sh
+BASE=https://ilikepdf.muriacare.my.id node tests/home.smoke.mjs
+```
+
+### Still worth doing
+
+- **`DocumentRoot /root/ilikepdf`.** It works because `/root` is `drwx--x`, but
+  serving out of root's home is a sharp edge — one `chmod` and the whole home
+  directory is public. `/var/www/ilikepdf` costs nothing to move to.
+- The error log is full of `wp-login.php` probes. Harmless against a static
+  site, just noise.
 
 ## Phase 12 — What Phase 9 turned up
 
@@ -297,15 +348,19 @@ Learned the hard way; all of these are load-bearing.
 ```
 9    all three defects      DONE      2026-07-29
 12.1 focus across rebuild   DONE      2026-07-29
-11   deploy + verify       ~1 hr      the parts CI structurally cannot cover
-10   real-world PDFs        open      the actual unknown
+11   deploy + verify        DONE      2026-07-30  (found 2 more .htaccess bugs)
+10   real-world PDFs        open      the actual unknown, and now the only one
 12.2 font embedding         open      only if someone asks
 ```
 
-**11 is next.** The deploy blocker is gone now that 9.3 is fixed, the suite is
-green end to end, and `.htaccess` is still untested by construction — nothing
-local can tell you whether compression is actually firing. 10 stays last because
-it's open-ended discovery, not a task with a finish line.
+**10 is what's left.** Everything else is either shipped or explicitly parked.
+It stays open-ended because it is discovery, not a task with a finish line —
+expect it to generate its own phase 13.
+
+The lesson from 11, worth carrying into 10: the `.htaccess` was reviewed twice
+and looked right both times, and it was still wrong in two ways that only a real
+Apache could show. Phase 10 is the same shape of gap — fixtures we generated
+ourselves cannot tell us what real PDFs do.
 
 One thing worth knowing before you start a server: something else may already
 hold port 8000 (a `php -S localhost:8000` was running during Phase 12). `npm run
