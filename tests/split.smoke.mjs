@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { launch, suite, BASE, FIX, TMP } from "./harness.mjs";
 import { parseRanges } from "../js/core/ranges.js";
+import { verifySignature } from "./signature.mjs";
 
 const { check, report } = suite("split");
 const { browser, page, errors } = await launch();
@@ -345,6 +346,30 @@ check("but the widgets do survive, as the message says",
 await loadGamma();
 const plainMsg = (await page.locator(".panel .error").textContent()).trim();
 check("an ordinary PDF gets no form warning", !/form fields/i.test(plainMsg), JSON.stringify(plainMsg));
+
+// --- 13. a signed PDF gets the signature message, not the form one ---------
+/* A signature *is* an AcroForm field, so without the type check in
+   inspectFields() a signed PDF would be told about form data it hasn't got.
+   Split copies pages, which drops the signature outright. */
+await page.goto(BASE + "/split.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", `${FIX}/signed.pdf`);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 2);
+
+const signedMsg = (await page.locator(".panel .error").textContent()).trim();
+check("a signed PDF is called out", /digitally signed/i.test(signedMsg), JSON.stringify(signedMsg));
+check("and is not also accused of having form fields", !/form fields/i.test(signedMsg));
+check("the signature warning doesn't block the export",
+  !(await page.locator(".btn-action").isDisabled()));
+
+check("the fixture's own signature verifies",
+  (await verifySignature(fs.readFileSync(`${FIX}/signed.pdf`))).valid);
+
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const splitSigned = await download();
+const after = await verifySignature(splitSigned.bytes);
+check("splitting drops the signature entirely", !after.present, after.why);
 
 check("no console errors", errors.length === 0, errors.join(" || "));
 

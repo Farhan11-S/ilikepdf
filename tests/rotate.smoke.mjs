@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { launch, suite, BASE, FIX, TMP } from "./harness.mjs";
+import { verifySignature } from "./signature.mjs";
 
 const { check, report } = suite("rotate");
 const { browser, page, errors } = await launch();
@@ -218,6 +219,38 @@ await page.locator('.page-tile[data-index="0"] [data-action="right"]').focus();
 await page.waitForTimeout(300);   // the reveal is a transition, not instant
 check("hover-revealed controls become visible on keyboard focus", await page.evaluate(() =>
   getComputedStyle(document.querySelector('.page-tile[data-index="0"] .tile-controls')).opacity === "1"));
+
+// --- a signed PDF: rotate keeps the signature and breaks it ----------------
+/* The half of 10.7 that split can't show. Rotate edits in place, so unlike the
+   page-copying tools the signature is still *there* afterwards — it just no
+   longer verifies, which is the worse outcome of the two because a viewer
+   reports it as altered rather than unsigned. */
+await page.goto(BASE + "/rotate.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", `${FIX}/signed.pdf`);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 2);
+
+const sigMsg = (await page.locator(".panel .error").textContent()).trim();
+check("a signed PDF is called out", /digitally signed/i.test(sigMsg), JSON.stringify(sigMsg));
+check("and is not accused of having form fields", !/form fields/i.test(sigMsg));
+// Rotate's button is disabled until a page is turned regardless, so the check
+// that matters is that turning one still enables it with the warning showing.
+await page.locator('.page-tile[data-index="0"] [data-action="right"]').click();
+check("the warning doesn't block rotating", !(await page.locator(".btn-action").isDisabled()));
+
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const rotatedSigned = await download();
+const sigAfter = await verifySignature(rotatedSigned.bytes);
+check("rotating leaves the signature in place", sigAfter.present, sigAfter.why);
+check("but it no longer verifies", !sigAfter.valid, sigAfter.why);
+
+// An ordinary file must not be accused of being signed.
+await page.goto(BASE + "/rotate.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", `${FIX}/alpha.pdf`);
+await page.waitForSelector("#workspace.on");
+check("an unsigned PDF gets no signature warning",
+  !/digitally signed/i.test((await page.locator(".panel .error").textContent())));
 
 check("no console errors", errors.length === 0, errors.join(" || "));
 

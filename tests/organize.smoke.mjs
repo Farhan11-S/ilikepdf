@@ -310,6 +310,13 @@ await load(["alpha.pdf", "beta.pdf"], 5);
 const plainMsg = await formMsg();
 check("ordinary PDFs get no form warning", !/form fields/i.test(plainMsg), JSON.stringify(plainMsg));
 
+// --- 13. a signed PDF among the sources ------------------------------------
+await load(["signed.pdf"], 2);
+const orgSig = (await page.locator(".panel .error").textContent()).trim();
+check("a signed PDF is called out", /digitally signed/i.test(orgSig), JSON.stringify(orgSig));
+check("and is not accused of having form fields", !/form fields/i.test(orgSig));
+check("the warning doesn't block saving", !(await page.locator(".btn-action").isDisabled()));
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();

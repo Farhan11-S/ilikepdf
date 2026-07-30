@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { launch, suite, BASE, FIX, TMP } from "./harness.mjs";
+import { verifySignature } from "./signature.mjs";
 
 const { check, report } = suite("watermark");
 const { browser, page, errors } = await launch();
@@ -289,6 +290,37 @@ check("the button is usable again after a failed watermark",
   !(await page.locator(".btn-action").isDisabled()));
 // The console.error in the catch is the point of the test, not a defect.
 errors.length = markNoise;
+
+// --- a signed PDF, and the note that update() used to eat ------------------
+/* Two things at once. The signature warning is the 10.7 case; that it is still
+   on screen after a settings change is the regression test for the bug 10.7
+   turned up — update() rendered `failure || imageError` and destroyed any
+   intake note the moment any slider moved, so watermark's large-file warning
+   and its multi-PDF note had never been visible at all. */
+await page.goto(BASE + "/watermark.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", `${FIX}/signed.pdf`);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 2);
+
+const wmSig = () => page.locator(".panel .error").textContent().then(t => t.trim());
+const wmFirst = await wmSig();
+check("a signed PDF is called out", /digitally signed/i.test(wmFirst), JSON.stringify(wmFirst));
+check("and is not accused of having form fields", !/form fields/i.test(wmFirst));
+
+// Move a control, which is what calls update().
+await page.locator("#opacityInput").evaluate(el =>
+  el.dispatchEvent(new Event("input", { bubbles: true })));
+await page.waitForTimeout(300);
+check("the note survives a settings change", /digitally signed/i.test(await wmSig()),
+  JSON.stringify(await wmSig()));
+
+await page.fill("#textInput", "DRAFT");
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const wmOut = await download();
+const wmAfter = await verifySignature(wmOut.bytes);
+check("watermarking leaves the signature in place but broken",
+  wmAfter.present && !wmAfter.valid, wmAfter.why);
 
 check("no console errors", errors.length === 0, errors.join(" || "));
 

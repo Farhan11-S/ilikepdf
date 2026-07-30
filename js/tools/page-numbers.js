@@ -13,6 +13,7 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
+import { inspectFields, signedWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 import { ANCHORS, anchorPoint, norm, toPageSpace, uprightAngle, visualSize } from "../core/place.js";
 
@@ -132,7 +133,11 @@ async function intake(fileList){
   }
 
   pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
-  panel.setError([warning, pdfs.length > 1 ? `Page numbers work on one PDF at a time — using ${src.name}.` : ""]
+  // Stamping is an in-place edit, so the form survives — but no signature does.
+  const { signed } = await inspectFields(doc);
+  panel.setError([warning,
+                  signed ? signedWarning([src.name], "given page numbers") : "",
+                  pdfs.length > 1 ? `Page numbers work on one PDF at a time — using ${src.name}.` : ""]
     .filter(Boolean).join(" "));
 
   $("srcName").textContent = src.name;

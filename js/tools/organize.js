@@ -13,7 +13,7 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
-import { hasForm, formWarning } from "../core/forms.js";
+import { inspectFields, formWarning, signedWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
 const $ = id => document.getElementById(id);
@@ -126,7 +126,7 @@ async function intake(fileList){
       const bytes = new Uint8Array(await file.arrayBuffer());
       const doc = await thumbs.open(bytes);
       const src = sources.length;
-      sources.push({ name: file.name, size: file.size, bytes, doc, form: await hasForm(doc) });
+      sources.push({ name: file.name, size: file.size, bytes, doc, ...await inspectFields(doc) });
       for(let p = 0; p < doc.numPages; p++){
         pages.push({ id: ++uid, src, page: p });
       }
@@ -146,9 +146,11 @@ async function intake(fileList){
 
   // Every source, not just this batch: a form-bearing file added first must
   // keep warning after a plain one is added on top of it.
-  const withForms = sources.filter(s => s.form).map(s => s.name);
+  const named = flag => sources.filter(s => s[flag]).map(s => s.name);
+  const withForms = named("form"), withSigs = named("signed");
   panel.setError([
     broken.length ? `Skipped ${broken.join(", ")} — password-protected or damaged.` : "",
+    withSigs.length ? signedWarning(withSigs, "reorganised") : "",
     withForms.length ? formWarning(withForms, "reorganised") : "",
     ...notes
   ].filter(Boolean).join(" "));

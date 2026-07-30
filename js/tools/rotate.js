@@ -12,6 +12,7 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
+import { inspectFields, signedWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
 const $ = id => document.getElementById(id);
@@ -105,7 +106,11 @@ async function intake(fileList){
 
   turns = new Array(src.pages).fill(0);
   pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
-  panel.setError([warning, pdfs.length > 1 ? `Rotate works on one PDF at a time — using ${src.name}.` : ""]
+  // Rotation is an in-place edit, so the form survives — but no signature does.
+  const { signed } = await inspectFields(doc);
+  panel.setError([warning,
+                  signed ? signedWarning([src.name], "rotated") : "",
+                  pdfs.length > 1 ? `Rotate works on one PDF at a time — using ${src.name}.` : ""]
     .filter(Boolean).join(" "));
 
   $("srcName").textContent = src.name;

@@ -30,13 +30,23 @@
 
 /* Rides on the pdf.js document each tool already has open for thumbnails, so
    detection costs no extra parse. Never throws: a document we cannot ask about
-   is reported as form-free rather than blocking an export that would work. */
-export async function hasForm(doc){
+   is reported as having nothing, rather than blocking an export that works.
+
+   Signatures are separated out because a signature *is* an AcroForm field —
+   a signed PDF answers yes to "has fields", and telling its owner about form
+   data would be answering a question they didn't ask. pdf.js types them for
+   us. See 10.7 for what actually happens to each. */
+export async function inspectFields(doc){
   try{
     const fields = await doc.getFieldObjects();
-    return !!fields && Object.keys(fields).length > 0;
+    if(!fields) return { form: false, signed: false };
+    let form = false, signed = false;
+    for(const group of Object.values(fields)){
+      for(const f of group) f.type === "signature" ? signed = true : form = true;
+    }
+    return { form, signed };
   }catch{
-    return false;
+    return { form: false, signed: false };
   }
 }
 
@@ -51,4 +61,19 @@ export function formWarning(names, verb){
   return `${who} form fields. Being ${verb} keeps the boxes and what's in ` +
          `them, but not the form itself — software that reads or fills form ` +
          `data will no longer see one.`;
+}
+
+/* Signatures break two different ways (10.7): the page-copying tools drop the
+   signature entirely, the in-place ones leave one that no longer verifies. One
+   wording covers both without picking a side, because the only thing a user
+   needs to decide is whether to go ahead. Which mechanism applies to which tool
+   belongs in NEXT.md, not in a panel message.
+
+   Not shown by PDF→JPG or JPG→PDF: images cannot carry a signature, so there
+   the loss is the point of the conversion rather than a surprise. */
+export function signedWarning(names, verb){
+  const who = names.length === 1
+    ? `"${names[0]}" is`
+    : `${names.length} of these files are`;
+  return `${who} digitally signed. The signature won't survive being ${verb}.`;
 }

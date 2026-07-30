@@ -286,6 +286,17 @@ await page.waitForFunction(() => document.querySelectorAll(".thumb-box canvas").
 const plainMsg = await mergeMsg();
 check("ordinary PDFs get no form warning", !/form fields/i.test(plainMsg), JSON.stringify(plainMsg));
 
+// --- 14. a signed PDF in the list ------------------------------------------
+await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/signed.pdf`]);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => /digitally signed/i.test(document.querySelector(".panel .error").textContent),
+  null, { timeout: 15000 }).catch(() => {});
+const mergeSig = (await page.locator(".panel .error").textContent()).trim();
+check("a signed PDF is called out", /digitally signed/i.test(mergeSig), JSON.stringify(mergeSig));
+check("and is not accused of having form fields", !/form fields/i.test(mergeSig));
+check("the warning doesn't block the merge", !(await page.locator(".btn-action").isDisabled()));
+
 check("no console errors", consoleErrors.length === 0, consoleErrors.join(" || "));
 
 await browser.close();

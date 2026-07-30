@@ -16,7 +16,7 @@ import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib, loadZip } from "../core/libs.js";
 import { parseRanges, toIndices } from "../core/ranges.js";
-import { hasForm, formWarning } from "../core/forms.js";
+import { inspectFields, formWarning, signedWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
 const $ = id => document.getElementById(id);
@@ -157,8 +157,10 @@ async function intake(fileList){
   failure = "";
   rangeInput.value = "1-" + src.pages;
   rangeInput.max = src.pages;
+  const fields = await inspectFields(doc);
   note = [warning,
-          await hasForm(doc) ? formWarning([src.name], "split") : "",
+          fields.signed ? signedWarning([src.name], "split") : "",
+          fields.form ? formWarning([src.name], "split") : "",
           pdfs.length > 1 ? `Split works on one PDF at a time — using ${src.name}.` : ""]
     .filter(Boolean).join(" ");
   panel.setError(note);

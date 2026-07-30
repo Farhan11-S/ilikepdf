@@ -211,6 +211,16 @@ check("the position picker stays reachable at 375px",
 check("the export button stays reachable at 375px", await page.locator(".btn-action").isVisible());
 await page.screenshot({ path: path.join(TMP, "page-numbers-375.png") });
 
+// --- a signed PDF ----------------------------------------------------------
+await page.goto(BASE + "/page-numbers.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", `${FIX}/signed.pdf`);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 2);
+const pnSig = (await page.locator(".panel .error").textContent()).trim();
+check("a signed PDF is called out", /digitally signed/i.test(pnSig), JSON.stringify(pnSig));
+check("and is not accused of having form fields", !/form fields/i.test(pnSig));
+check("the warning doesn't block numbering", !(await page.locator(".btn-action").isDisabled()));
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();

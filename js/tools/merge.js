@@ -9,7 +9,7 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
-import { formWarning } from "../core/forms.js";
+import { formWarning, signedWarning } from "../core/forms.js";
 
 const $ = id => document.getElementById(id);
 
@@ -24,9 +24,13 @@ let failure = "";    // why the last attempt failed; cleared by the next one
    has stopped doing anything — and a late thumbnail must not wipe the reason a
    merge failed. That was 9.1; this is the same shape of fix. */
 function showNotes(){
-  const forms = store.list().filter(f => f.form).map(f => f.name);
-  panel.setError(failure || [notes, forms.length ? formWarning(forms, "merged") : ""]
-    .filter(Boolean).join(" "));
+  const named = flag => store.list().filter(f => f[flag]).map(f => f.name);
+  const forms = named("form"), signed = named("signed");
+  panel.setError(failure || [
+    notes,
+    signed.length ? signedWarning(signed, "merged") : "",
+    forms.length ? formWarning(forms, "merged") : ""
+  ].filter(Boolean).join(" "));
 }
 
 /* Files are cards: a thumbnail with the name and page count underneath.

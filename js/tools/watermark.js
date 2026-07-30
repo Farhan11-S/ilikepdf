@@ -15,6 +15,7 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
+import { inspectFields, signedWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 import { widthOfText, heightOfText, canDraw } from "../core/helvetica.js";
 import { norm, toPageSpace, visualSize } from "../core/place.js";
@@ -33,6 +34,7 @@ let mode = "text";
 let image = null;    // {name, type, bytes, width, height, bitmap}
 let imageError = "";
 let failure = "";    // why the last attempt failed; cleared by the next one
+let note = "";       // sticky message about the file itself, not the settings
 
 /* The settings, normalised. Range inputs can't produce anything out of bounds,
    but the number fields can be emptied. */
@@ -182,8 +184,12 @@ async function intake(fileList){
   }
 
   pageItems = Array.from({ length: src.pages }, (_, i) => ({ id: i, label: String(i + 1) }));
-  panel.setError([warning, pdfs.length > 1 ? `Watermark works on one PDF at a time — using ${src.name}.` : ""]
-    .filter(Boolean).join(" "));
+  // Stamping is an in-place edit, so the form survives — but no signature does.
+  const { signed } = await inspectFields(doc);
+  note = [warning,
+          signed ? signedWarning([src.name], "watermarked") : "",
+          pdfs.length > 1 ? `Watermark works on one PDF at a time — using ${src.name}.` : ""]
+    .filter(Boolean).join(" ");
 
   $("srcName").textContent = src.name;
   $("srcMeta").textContent = plural(src.pages, "page") + " · " + fileSize(src.size);
@@ -249,9 +255,11 @@ function update(){
     : "PNG or JPG. Nothing is uploaded.";
 
   grid.paint();
-  // Rendering the failure here rather than from the catch is what stops the
-  // finally's update() wiping it a moment later.
-  panel.setError(failure || imageError);
+  // Rendering these here rather than from the catch is what stops the finally's
+  // update() wiping them a moment later. `note` joined the chain in 10.7: it
+  // was being set at intake and then destroyed by this very line, so the
+  // large-file warning and the multi-PDF note had never once been visible.
+  panel.setError(failure || imageError || note);
 
   if(!src) return;
 
@@ -349,7 +357,7 @@ function hexToRgb(hex, rgb){
 $("downloadBtn").onclick = () => downloadBlob(result.blob, result.filename);
 $("restartBtn").onclick = () => {
   src = null; doc = null; result = null; pageItems = []; image = null;
-  imageError = ""; failure = "";
+  imageError = ""; failure = ""; note = "";
   grid.reset();
   panel.setError("");
   $("heroError").classList.remove("on");

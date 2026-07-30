@@ -1,6 +1,6 @@
 /* The file list. Single source of truth for every tool.
    Array order IS output order — never sort for display.
-   Entries: {id, name, size, bytes, pages, thumb, form} */
+   Entries: {id, name, size, bytes, pages, thumb, form, signed} */
 
 import { fileSize } from "./format.js";
 
@@ -63,7 +63,7 @@ export async function addFiles(fileList){
     if(error){ notes.push(error); continue; }
     if(warning) notes.push(warning);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const entry = { id: ++uid, name: file.name, size: file.size, bytes, pages: null, thumb: null, form: false };
+    const entry = { id: ++uid, name: file.name, size: file.size, bytes, pages: null, thumb: null, form: false, signed: false };
     files.push(entry);
     added.push(entry);
   }
