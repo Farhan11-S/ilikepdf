@@ -1,0 +1,136 @@
+{
+  "$comment": [
+    "Phase 10 — PDFs we did not make. Fetched by `npm run fetch-real` into tmp/,",
+    "which is gitignored: the manifest is committed, the binaries never are.",
+    "`covers` maps to the case table in NEXT.md. Anything you drop into tmp/real/",
+    "by hand is picked up by the probe too, manifest or not."
+  ],
+  "dir": "tmp/real",
+  "sources": {
+    "pdfjs": "https://raw.githubusercontent.com/mozilla/pdf.js/master/test/pdfs/",
+    "verapdf": "https://raw.githubusercontent.com/veraPDF/veraPDF-corpus/master/"
+  },
+  "files": [
+    {
+      "name": "freeculture.pdf",
+      "from": "pdfjs",
+      "sha256": "753441c619c529c8d0fc3e7e470f07c9547838fc7229bea8c1dcf854acee03b4",
+      "bytes": 2598727,
+      "covers": ["10.2 embedded fonts", "10.3 long documents"],
+      "why": "352 pages, Type0/CID fonts, DCTDecode and CCITTFaxDecode images, linearised. A real published book — the single most useful file here."
+    },
+    {
+      "name": "issue3188.pdf",
+      "from": "pdfjs",
+      "sha256": "6245a949d6d7418620b0683e2ff44852628d51d484598baaa677839f0172d27b",
+      "bytes": 8125374,
+      "covers": ["10.4 scanned"],
+      "why": "7.9 MB on a single page of DCTDecode. The memory case for PDF-to-JPG at 3x."
+    },
+    {
+      "name": "22060_A1_01_Plans.pdf",
+      "from": "pdfjs",
+      "sha256": "bd0203ede39cfe101c7d1ea6555e1c9fc408247627a47de549ebf2590f1b887b",
+      "bytes": 6264322,
+      "covers": ["10.4 scanned"],
+      "why": "6 MB single-page scanned plans, a different producer from issue3188."
+    },
+    {
+      "name": "issue12841_reduced.pdf",
+      "from": "pdfjs",
+      "sha256": "0edad3c5bafa7f778580d838385830610423845ae26d4a93c1ef15dd60b6edcb",
+      "bytes": 5852805,
+      "covers": ["10.4 scanned"],
+      "why": "5.7 MB single page. Third large-image producer."
+    },
+    {
+      "name": "PDFJS-9279-reduced.pdf",
+      "from": "pdfjs",
+      "sha256": "b3067f37e7b2ea17ac0cc547644c32f77174d2d409106893a939b702b0bde617",
+      "bytes": 3090252,
+      "covers": ["10.2 embedded fonts"],
+      "why": "3 MB of embedded CID fonts."
+    },
+    {
+      "name": "cidfont_cmap_overflow.pdf",
+      "from": "pdfjs",
+      "sha256": "ecb07ca4b3c6a9fd408db07c29c7e4426fb1bd6ee9e2bbdfa4997b65be602c13",
+      "bytes": 94168,
+      "covers": ["10.2 embedded fonts"],
+      "why": "A CMap large enough to have broken pdf.js once."
+    },
+    {
+      "name": "ArabicCIDTrueType.pdf",
+      "from": "pdfjs",
+      "sha256": "1cad1de912ba29f89a6d8b08bc5b0f84382874ffedab2c8f9e05ef608c265bb1",
+      "bytes": 39370,
+      "covers": ["10.2 embedded fonts"],
+      "why": "Right-to-left script in an embedded CID TrueType — the case 9.2's WinAnsi work says nothing about."
+    },
+    {
+      "name": "issue19971.pdf",
+      "from": "pdfjs",
+      "sha256": "178c6207203151cf4036cd377d233e92a3cfb07e7787dd68bc2b2203d5ef3ce1",
+      "bytes": 1729186,
+      "covers": ["10.2 embedded fonts"],
+      "why": "6 pages mixing CID fonts and JPEG. Closest thing here to an ordinary modern document."
+    },
+    {
+      "name": "comments.pdf",
+      "from": "pdfjs",
+      "sha256": "283b215db9937fcdf148b22e7310892d148e43047bccffa6bf56eb4156592e5d",
+      "bytes": 1065760,
+      "covers": ["annotations"],
+      "why": "14 pages carrying comment annotations. Annotations are the neighbours of the form widgets 10.1 is about, so worth watching through copyPages."
+    },
+    {
+      "name": "images.pdf",
+      "from": "pdfjs",
+      "sha256": "f7a44ca650d951cfea007440cda297dabbf2cf0c8f77a948a580cc0e99496725",
+      "bytes": 1494439,
+      "covers": ["10.4 scanned"],
+      "why": "A page of many images rather than one big one."
+    },
+    {
+      "name": "form_two_pages.pdf",
+      "from": "pdfjs",
+      "sha256": "6d7c608d0102fa1e1b3cbc2c3b0a989783e90f84ff1a7fe7cbdb6dc2a1b60fbd",
+      "bytes": 23136,
+      "covers": ["10.1 acroform"],
+      "why": "A second real AcroForm, so 10.1's finding rests on more than one file we did not write."
+    },
+    {
+      "name": "empty_protected.pdf",
+      "from": "pdfjs",
+      "sha256": "69556af04215faec7da3e93e823c64f1b74679e52fd10379176f0e0462dd4b6c",
+      "bytes": 5605,
+      "covers": ["10.5 encrypted"],
+      "why": "Encrypted. pdf-lib throws a *parse* error on it rather than a password error, even with ignoreEncryption."
+    },
+    {
+      "name": "encrypted-attachment.pdf",
+      "from": "pdfjs",
+      "sha256": "0f44da5152adf8cafcd7b0057d840310d78e17d033ee5414da0881b6dcd130ab",
+      "bytes": 2719,
+      "covers": ["10.5 encrypted"],
+      "why": "Encrypted but readable with ignoreEncryption — the opposite half of 10.5 from empty_protected."
+    },
+    {
+      "name": "Brotli-Prototype-FileA.pdf",
+      "from": "pdfjs",
+      "sha256": "88d7f8b3f6e8cb26fdde69bbcd27990f2f61f807472afce7b5dbe2ae8f4f3ff7",
+      "bytes": 1305278,
+      "covers": ["robustness"],
+      "why": "Not encrypted, and pdf-lib still cannot parse it. Our error path says 'password-protected or damaged' — this is the file that tests the second half of that sentence."
+    },
+    {
+      "name": "pdfa-1b-pass.pdf",
+      "from": "verapdf",
+      "path": "PDF_A-1b/6.1%20File%20structure/6.1.2%20File%20header/veraPDF%20test%20suite%206-1-2-t02-pass-a.pdf",
+      "sha256": "457da9e891c69ae97c536ffdef80e111da48ed19f8ddea7fae7c3fb71933d1f0",
+      "bytes": 9469,
+      "covers": ["10.6 pdf/a"],
+      "why": "A conforming PDF/A-1b file from veraPDF's own suite."
+    }
+  ]
+}
