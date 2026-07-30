@@ -8,23 +8,23 @@ every phase in it is now shipped, so treat it as history, not a task list.*
 
 ## Where things stand
 
-All eight tools in `js/core/tools.js` are `ready: true` and working. **502
+All eight tools in `js/core/tools.js` are `ready: true` and working. **531
 assertions across 10 smoke suites, green against source and the built `dist/`.**
-(478 of them were also green against the live site as of Phase 11; the 24 added
-in 10.1 have not been run against production — the deploy is one build behind.)
+(478 of them were also green against the live site as of Phase 11; the 53 added
+in phase 10 have not been run against production — the deploy is behind.)
 
 ```sh
 npm install && npx playwright install chromium
 npm run serve &            # source, port 8000
-npm test                   # 502 assertions
+npm test                   # 531 assertions
 npm run build              # -> dist/ + dist.zip, prints the size table
 npm run preview &          # dist/, port 8001
 BASE=http://localhost:8001 npm test    # same suites against the build
 ```
 
 Per-suite counts, so you can tell at a glance if something got dropped:
-`home 38 · merge 57 · split 81 · rotate 53 · organize 82 · page-numbers 41 ·
-watermark 51 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
+`home 38 · merge 65 · split 86 · rotate 59 · organize 85 · page-numbers 44 ·
+watermark 55 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 `npm test` chains with `&&`, so the first suite to fail hides every suite after
 it. If something goes red, run the rest individually before concluding it's the
@@ -32,8 +32,8 @@ only thing broken.
 
 **The build is honest and enforced.** Order is minify → inline → brotli, so the
 `.br` files are compression of already-minified bytes; nothing is double-handled.
-Worst page is `watermark.html` at **12,580 B brotli against a 14,336 B budget
-(88%)**, and `build.mjs` exits non-zero if any page misses.
+Worst page is `watermark.html` at **12,790 B brotli against a 14,336 B budget
+(89%)**, and `build.mjs` exits non-zero if any page misses.
 
 Measured, in case anyone proposes dropping minification because "brotli does it
 anyway" — it does, mostly, but not enough:
@@ -126,17 +126,23 @@ the *logic* is right and prove almost nothing about real files.
 
 Collect a handful of genuinely different PDFs and run all eight tools over each:
 
-| kind | what it would break |
-|---|---|
-| scanned document (big JPEG per page) | memory during PDF→JPG at 3×; thumbnail render time |
-| CJK or Cyrillic with embedded fonts | page-numbers/watermark drawing over it (should be fine — different code path from 9.2, verify) |
-| 300+ pages | `IntersectionObserver` queue, `copyPages` cost, progress bar responsiveness |
-| a fillable form (AcroForm) | **done — see 10.1.** `copyPages` drops the catalog `/AcroForm` (not the widgets); merge/split/organize all warn |
-| password-protected | the "name the file" error path (`ignoreEncryption: true` may open it anyway) |
-| PDF/A or a linearised file | nothing expected, but worth one run |
+**All of it is now done.** The original guesses are kept below with what
+actually happened, because four of the five were wrong and that is the useful
+part:
 
-Do **not** commit large binary fixtures. Test manually, write down what happened
-in this file, and only add a fixture if it's small and reproducible.
+| kind | predicted | actual |
+|---|---|---|
+| scanned document (big JPEG per page) | memory during PDF→JPG at 3× | **fine** (10.4) |
+| CJK or Cyrillic with embedded fonts | page-numbers/watermark drawing over it | **fine** (10.2) |
+| 300+ pages | `IntersectionObserver` queue, `copyPages` cost | **fine**, worst tool 21s (10.3) |
+| a fillable form (AcroForm) | copyPages drops form fields | **confirmed**, but not the way predicted (10.1) |
+| password-protected | the "name the file" error path | **one real bug**, in Merge (10.5) |
+| PDF/A or a linearised file | nothing expected | **nothing** (10.6) |
+| *(not predicted at all)* | — | **digital signatures — every tool (10.7)** |
+
+Do **not** commit large binary fixtures. `npm run fetch-real` pulls them into
+gitignored `tmp/real/` from a committed manifest; only add a fixture if it's
+small and reproducible.
 
 ### 10.1 AcroForm — confirmed, but the first write-up overclaimed (2026-07-30)
 
@@ -221,10 +227,10 @@ esbuild keeps `forms.js` off the five pages that don't import it — checked, an
 still 88%). The three that do grew: merge 10,861 · split 11,748 · organize
 11,136, all comfortably inside budget.
 
-**24 new assertions** (merge +6, split +10, organize +8) — **502 across 10
-suites**, green against source and `dist/`. Per-suite now: `home 38 · merge 57 ·
-split 81 · rotate 53 · organize 82 · page-numbers 41 · watermark 51 ·
-jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
+**24 new assertions** (merge +6, split +10, organize +8) at the time; phase 10
+finished on **531 across 10 suites**, green against source and `dist/`.
+Per-suite: `home 38 · merge 65 · split 86 · rotate 59 · organize 85 ·
+page-numbers 44 · watermark 55 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 Each suite asserts **both halves**: that the warning appears and names the file,
 *and* that the warning is true — the exported document really does come back
@@ -246,12 +252,148 @@ everything on page 1 would pass a split that dropped page 2's fields.
 and `/DR` resources, appearance streams and radio-group kids — squarely in the
 class of things this project declines to half-do. The message is the fix.
 
-### 10.2–10.6 — still open
+### 10.2–10.6 — the sweep (2026-07-30)
 
-The other five rows of the table above are untouched: scanned/JPEG-heavy, CJK
-with embedded fonts, 300+ pages, password-protected, PDF/A or linearised. These
-need genuinely foreign files rather than anything we can generate — which is
-exactly what makes them the remaining unknown.
+105 runs, every tool over all 15 files. **Four of the five predicted problems
+were not problems at all**, which is worth as much as a defect would have been:
+the guesses in the table above were mostly wrong, and now we know rather than
+suspect.
+
+| case | verdict |
+|---|---|
+| **10.2** embedded CID fonts (Arabic, big CMaps) | **clean** — all seven tools; page numbers and watermark draw over them without complaint |
+| **10.3** 352 pages (`freeculture.pdf`) | **clean and fast** — merge 1.5s · split 1.7s · organize 1.8s · rotate 2.5s · numbers 2.3s · watermark 21s · PDF→JPG 17s for 352 JPGs (55.7 MB zip). No `IntersectionObserver` trouble, no `copyPages` cost worth naming |
+| **10.4** 6–8 MB single-page scans | **clean** — 1.3–2s each, including PDF→JPG at 3× |
+| **10.6** PDF/A-1b, and linearised files | **clean** — nothing to report, as predicted |
+| **10.5** encrypted / damaged | **one real bug, now fixed** — below |
+
+**`copyPages` throws away unreferenced objects.** `issue3188.pdf` is 7.9 MB and
+comes out of merge, split and organize at **0.1 MB** — 224 `/Image` objects
+gone. That looked like catastrophic content loss and isn't: the render is
+**pixel-identical, 0 of 721,140 pixels different**, because those images were
+orphans nothing on the page referenced. The in-place tools keep them (7.7 MB
+out) since they never rebuild the document. Do **not** turn this into a
+"compress" feature — it is entirely file-dependent (`22060_A1_01_Plans.pdf`,
+also a big scan, comes out the same size) and it is deletion of dead objects,
+not compression. See the standing refusal at the bottom of this file.
+
+#### 10.5 — Merge accepted a file every other tool refused, and lied about it
+
+`encrypted-attachment.pdf` is refused at intake by Split, Organize, Rotate, Page
+numbers, Watermark and PDF→JPG — all six open with pdf.js, which throws. Merge
+does not open it with pdf.js at all: `store.addFiles` just reads bytes and
+`thumbs.hydrate` swallows the failure. So it merged the file happily, because
+**pdf-lib is more tolerant than pdf.js** and read it fine.
+
+Merge being able to do more is not the bug. The bug was that it said nothing
+about it and got the arithmetic wrong:
+
+| | before | after |
+|---|---|---|
+| the card | `0 pages · 3 KB` | `can't preview · 3 KB` |
+| the summary | `Pages in result: 3` | `Pages in result: 3+ (1 not previewed)` |
+| the panel | *(silent)* | *"…can't be previewed here — pdf-lib is more forgiving than the preview, so it will still be merged."* |
+| the actual output | **4 pages** | 4 pages |
+
+A summary that promises 3 and delivers 4 is the same class of dishonesty as
+10.1's warning: a number the UI cannot back. `hydrate()` now distinguishes
+"couldn't read it at all" from "read it, it has no pages" with an `unreadable`
+flag, and the total is rendered as a floor.
+
+Five assertions in `merge.smoke.mjs` §15, against `tests/fixtures/encrypted.pdf`
+— 2.7 KB, the same file from mozilla/pdf.js's corpus, small enough to commit and
+recorded in `tests/real-corpus.json`. Worth knowing: **pdf.js cannot be patched
+to fake this.** `getDocument` is a non-configurable getter, so assigning over it
+silently does nothing and the test passes for the wrong reason. That was tried
+first.
+
+The other two are working as intended and need no change. `empty_protected.pdf`
+opens in every tool and fails at export — late, but the message is right, and
+catching it at intake would mean a full pdf-lib parse of every file.
+`Brotli-Prototype-FileA.pdf` is not encrypted and still unparseable, which is
+the "or damaged" half of that sentence earning its keep.
+
+### 10.7 Digital signatures — every tool breaks them, two different ways
+
+**Not in the original table, and the biggest defect the phase turned up.** A
+signature covers a byte range of the file, so anything that re-saves the
+document breaks it. pdf-lib re-saves everything. There is no safe tool.
+
+But the *way* it breaks splits along the same line 10.1 found, and the two
+outcomes are not equally bad:
+
+| | Merge · Split · Organize | Rotate · Page numbers · Watermark |
+|---|---|---|
+| how they write | `copyPages` into a new document | load, mutate, save in place |
+| the AcroForm (10.1) | dropped | **kept** |
+| the signature | **removed entirely** | **kept, and no longer verifies** |
+| what a viewer says | an unsigned document | *"this document has been altered"* |
+
+The in-place case is the worse one. A file that has quietly become unsigned is
+merely diminished; a file that still claims a signature and fails it looks
+**tampered with**, which is a much louder accusation to hand someone
+unexpectedly.
+
+A signature is an AcroForm field, so before this the 10.1 detector answered
+"yes, has fields" for a signed PDF and told its owner about form data they
+hadn't got. `inspectFields()` now separates the two on pdf.js's own field
+`type`, and returns `{form, signed}`.
+
+The warning goes on **six** tools, not eight: PDF→JPG and JPG→PDF are left out
+because an image cannot carry a signature, so there the loss is the point of the
+conversion rather than a surprise. One wording covers both mechanisms —
+
+> "X" is digitally signed. The signature won't survive being merged.
+
+— because the only thing the user has to decide is whether to go ahead, and
+which mechanism applies to which tool belongs here rather than in a panel.
+
+**A pre-existing bug fell out of this.** Wiring the message into Watermark
+showed that its `update()` rendered `failure || imageError` and clobbered
+anything else, and intake sets its note and then calls `update()`. So
+Watermark's large-file warning and its "one PDF at a time" note **had never been
+visible at all** — 9.1 fixed the failure path there and left the notes outside
+the render chain. `note` is now part of what `update()` renders, and
+`watermark.smoke.mjs` asserts the message survives a settings change, which is
+the thing that used to destroy it.
+
+`tests/fixtures/signed.pdf` (6.5 KB, 2 pages) carries a real AcroForm `/Sig`
+field with a correct `/ByteRange`; `/Contents` holds a SHA-256 of the bytes that
+range covers instead of a CMS blob, so `tests/signature.mjs` can verify it with
+no certificate and no new dependency. `verifySignature()` locates the field
+**through pdf-lib rather than by scanning for `/ByteRange`** — that matters:
+pdf-lib saves with object streams by default, so after an in-place tool the
+signature is still there but compressed, and a byte scan reports it missing.
+Getting that wrong inverts the finding, and it did on the first attempt.
+
+**Honest limit:** this proves detection and destruction. It cannot tell you what
+Acrobat says about a real CMS signature — that still wants one genuinely signed
+real-world file, ideally an e-materai or signed government form, which is also
+more representative of what this site's users actually upload. Dropping one into
+`tmp/real/` is all it takes.
+
+### The rig
+
+Phase 10 is repeatable now rather than a session's worth of ad hoc runs:
+
+```sh
+npm run fetch-real     # tests/real-corpus.json -> tmp/real/, sha256 checked
+npm run probe:real     # every tool over every file; writes tmp/real-report.md
+```
+
+`tests/real-corpus.json` is committed and lists 15 files with their hashes and
+what each is for; the binaries stay out of the repo per this phase's own rule,
+and `tmp/` was already gitignored. Anything dropped into `tmp/real/` by hand is
+swept too, manifest or not.
+
+`tests/real.probe.mjs` is **not** in `npm test` — it needs files a clean
+checkout doesn't have. It runs every tool over every file rather than only the
+predicted pairs, which is the lesson of 10.1 turned into a habit.
+
+One thing it got wrong on its first run, worth keeping in mind for anything
+similar: it waited only for `#done.on`, so a tool that *correctly* reported a
+failed export looked like a 120-second hang. It now waits for the progress bar
+to stop and either outcome to appear.
 
 ---
 
@@ -516,21 +658,35 @@ Learned the hard way; all of these are load-bearing.
 12.1 focus across rebuild   DONE      2026-07-29
 11   deploy + verify        DONE      2026-07-30  (found 2 more .htaccess bugs)
 10.1 AcroForm               DONE      2026-07-30  (confirmed; 3 tools, not 2)
-10.2-10.6 other real PDFs   open      needs files we can't generate
+10.2-10.6 the sweep         DONE      2026-07-30  (4 of 5 were non-problems)
+10.7 digital signatures     DONE      2026-07-30  (not predicted; all 6 tools)
 12.2 font embedding         open      only if someone asks
 ```
 
-**The rest of 10 is what's left**, and it needs genuinely foreign files — that
-is the whole point of it. It stays open-ended because it is discovery, not a
-task with a finish line; expect it to generate its own phase 13.
+**Phase 10 is done.** What is left is 12.2, which is explicitly "only if someone
+asks", so the next real work is whatever the next request brings.
 
-`dist/` is one build ahead of what is deployed. 10.1 changed three tool pages,
-so the live site still splits forms silently — worth a deploy.
+Two things a future session should pick up:
 
-The lesson from 11, worth carrying into 10: the `.htaccess` was reviewed twice
-and looked right both times, and it was still wrong in two ways that only a real
-Apache could show. Phase 10 is the same shape of gap — fixtures we generated
-ourselves cannot tell us what real PDFs do.
+- **`dist/` is well ahead of production.** Phase 10 changed all six PDF→PDF
+  pages. Deploy with the staged swap in Phase 11.
+- **One genuinely signed real-world PDF** would close the last honest gap in
+  10.7 — an e-materai or a signed government form, dropped into `tmp/real/`.
+  The structural fixture proves destruction; it cannot prove what Acrobat says.
+
+The lesson from 11 was that the `.htaccess` was reviewed twice, looked right
+both times, and was still wrong in two ways only a real Apache could show. Phase
+10 was the same shape of gap and it paid out the same way — but not where
+anyone was pointing. **Of the six defects the phase produced, one was predicted
+(10.1, and the prediction was wrong about what it meant), one was in a case
+nobody had listed at all (10.7, signatures), one was a lie in Merge's summary
+(10.5), one was a bug in the probe measuring all this, and one was a
+nine-month-old bug in Watermark that only surfaced because a new message had to
+be routed through the same code.** Four of the five things the table predicted
+would break didn't.
+
+The generalisable bit: what a real file teaches you is rarely the thing you
+opened it to check.
 
 One thing worth knowing before you start a server: something else may already
 hold port 8000 (a `php -S localhost:8000` was running during Phase 12). `npm run

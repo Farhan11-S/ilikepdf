@@ -127,7 +127,7 @@ js/core/busy.js     the bottom-right busy pill
 js/core/thumbs.js   pdf.js setup + page rendering
 js/core/place.js    anchors and rotated-page coordinates
 js/core/helvetica.js  text metrics, for measuring without pdf-lib
-js/core/forms.js    AcroForm detection + the warning the copying tools show
+js/core/forms.js    AcroForm/signature detection + the warnings tools show
 js/core/images.js   reading images in and embedding them
 js/core/grid.js     the one grid: cards or page tiles, lazy, FLIP reorder
 js/core/panel.js    action panel, progress bar, error text
@@ -144,7 +144,24 @@ js/tools/watermark.js     watermark stamping
 js/tools/jpg-to-pdf.js    images in, one page each
 js/tools/pdf-to-jpg.js    pages out, as JPG or PNG
 tests/              browser smoke tests + PDF fixtures
+tests/real-corpus.json  manifest of third-party PDFs for the phase 10 sweep
+tests/real.probe.mjs    every tool over every real PDF — not part of npm test
+scripts/fetch-real.mjs  downloads that manifest into tmp/real/ (gitignored)
 ```
+
+### Testing against PDFs we didn't make
+
+The fixtures in `tests/fixtures/` are ones we generated, which makes them good
+at proving logic and bad at predicting real files — see NEXT.md phase 10, where
+a self-made fixture confirmed a mechanism and was wrong about what it meant.
+
+```sh
+npm run fetch-real     # manifest -> tmp/real/, sha256 checked
+npm run probe:real     # sweeps every tool over every file, writes tmp/real-report.md
+```
+
+Neither runs in `npm test`: the suites must pass on a clean checkout with no
+network. Drop any PDF into `tmp/real/` and the sweep picks it up.
 
 Every page carries empty `<header class="site-header">` and
 `<footer class="site-footer">` shells that `chrome.js` fills in. The shells stay
@@ -229,6 +246,13 @@ place and keep the form intact. Don't add the warning to those three, don't be
 tempted to "fix" it by implementing form copying, and **don't word the warning
 as "the fields will be gone"** — they visibly aren't, and a real file disproved
 exactly that phrasing. See NEXT.md 10.1.
+
+It cannot **preserve a digital signature** either, and here there is no safe
+tool: a signature covers a byte range, and pdf-lib re-saves the whole file. The
+two groups fail differently — the page-copying tools remove the signature, the
+in-place ones leave one that no longer verifies, which reads to a viewer as
+"this document has been altered". All six PDF→PDF tools warn; PDF→JPG and
+JPG→PDF don't, because an image cannot carry a signature. See NEXT.md 10.7.
 
 That's why there is no Compress tool. All pdf-lib could do is strip metadata and
 re-save with `useObjectStreams: true`, which saves low single-digit percentages —
