@@ -13,6 +13,7 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
+import { hasForm, formWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 
 const $ = id => document.getElementById(id);
@@ -22,7 +23,7 @@ const UNDO_DEPTH = 60;
 const fileInput = $("fileInput");
 const panel = mountPanel($("panel"));
 
-let sources = [];    // {name, size, bytes, doc}
+let sources = [];    // {name, size, bytes, doc, form}
 let pages = [];      // {id, src, page} — the working set, in output order
 let history = [];    // past states of `pages`, most recent last
 let result = null;
@@ -125,7 +126,7 @@ async function intake(fileList){
       const bytes = new Uint8Array(await file.arrayBuffer());
       const doc = await thumbs.open(bytes);
       const src = sources.length;
-      sources.push({ name: file.name, size: file.size, bytes, doc });
+      sources.push({ name: file.name, size: file.size, bytes, doc, form: await hasForm(doc) });
       for(let p = 0; p < doc.numPages; p++){
         pages.push({ id: ++uid, src, page: p });
       }
@@ -143,8 +144,12 @@ async function intake(fileList){
     return;
   }
 
+  // Every source, not just this batch: a form-bearing file added first must
+  // keep warning after a plain one is added on top of it.
+  const withForms = sources.filter(s => s.form).map(s => s.name);
   panel.setError([
     broken.length ? `Skipped ${broken.join(", ")} — password-protected or damaged.` : "",
+    withForms.length ? formWarning(withForms, "reorganised") : "",
     ...notes
   ].filter(Boolean).join(" "));
 

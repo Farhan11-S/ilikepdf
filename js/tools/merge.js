@@ -9,12 +9,25 @@ import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
 import { loadPdfLib } from "../core/libs.js";
+import { formWarning } from "../core/forms.js";
 
 const $ = id => document.getElementById(id);
 
 const fileInput = $("fileInput");
 const panel = mountPanel($("panel"));
 let mergedBlob = null;
+let notes = "";      // what was wrong with the files themselves, from intake
+let failure = "";    // why the last attempt failed; cleared by the next one
+
+/* The one place that decides what the panel says. Form flags arrive one file at
+   a time from hydration, so the message has to be re-rendered after the user
+   has stopped doing anything — and a late thumbnail must not wipe the reason a
+   merge failed. That was 9.1; this is the same shape of fix. */
+function showNotes(){
+  const forms = store.list().filter(f => f.form).map(f => f.name);
+  panel.setError(failure || [notes, forms.length ? formWarning(forms, "merged") : ""]
+    .filter(Boolean).join(" "));
+}
 
 /* Files are cards: a thumbnail with the name and page count underneath.
    Array order is output order, so the order badge is the merge position. */
@@ -64,7 +77,8 @@ fileInput.onchange = e => { intake(e.target.files); fileInput.value = ""; };
    is an error nobody sees. Same split the other tools use. */
 function fail(msg){
   if(store.count()){
-    panel.setError(msg);
+    failure = msg;
+    showNotes();
     showWorkspace();
   }else{
     const el = $("heroError");
@@ -77,15 +91,19 @@ function fail(msg){
 async function intake(fileList){
   $("heroError").classList.remove("on");
 
-  const { added, notes } = await store.addFiles(fileList);
+  const { added, notes: fresh } = await store.addFiles(fileList);
   if(!added.length){
-    fail(notes.length ? notes.join(" ") : "Those files aren't PDFs. Add files ending in .pdf.");
+    fail(fresh.length ? fresh.join(" ") : "Those files aren't PDFs. Add files ending in .pdf.");
     return;
   }
-  panel.setError(notes.join(" "));
+  notes = fresh.join(" ");
+  failure = "";
+  showNotes();
   showWorkspace();
-  // Page counts and thumbnails arrive one by one; each repaints the grid.
-  store.pending().forEach(entry => thumbs.hydrate(entry).then(store.notifyChange));
+  // Page counts, thumbnails and form flags arrive one by one; each repaints the
+  // grid, and each can turn the form warning on.
+  store.pending().forEach(entry =>
+    thumbs.hydrate(entry).then(() => { store.notifyChange(); showNotes(); }));
 }
 
 /* ---------- panel state ---------- */
@@ -104,7 +122,8 @@ store.subscribe(files => {
 panel.onAction(async () => {
   const files = store.list();
   panel.setBusy(true, "Merging…");
-  panel.setError("");
+  failure = "";
+  showNotes();
   let reading = null;      // whichever file we're on, so a failure can name it
   try{
     const { PDFDocument } = await loadPdfLib();
@@ -125,18 +144,20 @@ panel.onAction(async () => {
       files.length + " files · " + out.getPageCount() + " pages · " + fileSize(mergedBlob.size);
     showDone();
   }catch(err){
-    panel.setError(reading
+    failure = reading
       ? `"${reading}" couldn't be read. It may be password-protected or damaged — remove it and try again.`
-      : "Something went wrong before the merge could start. Reload and try again.");
+      : "Something went wrong before the merge could start. Reload and try again.";
     console.error(err);
   }finally{
     panel.setBusy(false, "Merge PDF");
+    showNotes();
   }
 });
 
 $("downloadBtn").onclick = () => downloadBlob(mergedBlob, "ilikepdf_merged.pdf");
 $("restartBtn").onclick = () => {
   mergedBlob = null;
+  notes = ""; failure = "";
   panel.setError("");
   $("heroError").classList.remove("on");
   store.clear();   // empties the list, which sends us back to the hero

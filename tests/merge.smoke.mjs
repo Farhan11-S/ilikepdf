@@ -238,6 +238,54 @@ await page.setViewportSize({ width: 1280, height: 900 });
 await page.waitForTimeout(300);
 await page.screenshot({ path: path.join(TMP, "desktop.png") });
 
+// --- 13. a PDF with form fields says so ------------------------------------
+/* Same defect as split's §12 and organize's §12. Merge's twist is that the flag
+   arrives from hydration, one file at a time and after intake has already
+   painted — so the message cannot be written once at intake and left alone. */
+await page.goto(BASE + "/merge.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/form.pdf`]);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".thumb-box canvas").length === 2,
+  null, { timeout: 15000 });
+
+const mergeMsg = () => page.locator(".panel .error").textContent().then(t => t.trim());
+await page.waitForFunction(() => /form fields/i.test(document.querySelector(".panel .error").textContent),
+  null, { timeout: 15000 }).catch(() => {});
+const formMsg = await mergeMsg();
+check("a PDF with form fields is called out", /form fields/i.test(formMsg), JSON.stringify(formMsg));
+check("the warning names the file", formMsg.includes("form.pdf"));
+check("the warning doesn't block the merge", !(await page.locator(".btn-action").isDisabled()));
+
+const formFields = async bytes => page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  const f = await doc.getFieldObjects();
+  return f ? Object.keys(f).length : 0;
+}, [...bytes]);
+
+check("the fixture really has fields to lose", (await formFields(fs.readFileSync(`${FIX}/form.pdf`))) > 0);
+
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const [dl] = await Promise.all([
+  page.waitForEvent("download"),
+  page.locator("#downloadBtn").click()
+]);
+const mergedPath = path.join(TMP, dl.suggestedFilename());
+await dl.saveAs(mergedPath);
+const mergedBytes = fs.readFileSync(mergedPath);
+check("the warning is true — the merged output has no form left",
+  (await formFields(mergedBytes)) === 0);
+
+// Removing the offending file must take the warning with it.
+await page.locator("#restartBtn").click();
+await page.setInputFiles("#fileInput", [`${FIX}/alpha.pdf`, `${FIX}/beta.pdf`]);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".thumb-box canvas").length === 2,
+  null, { timeout: 15000 });
+const plainMsg = await mergeMsg();
+check("ordinary PDFs get no form warning", !/form fields/i.test(plainMsg), JSON.stringify(plainMsg));
+
 check("no console errors", consoleErrors.length === 0, consoleErrors.join(" || "));
 
 await browser.close();

@@ -284,6 +284,68 @@ check("the button is usable again after a failed split",
 // The console.error in the catch is the point of the test, not a defect.
 errors.length = splitNoise;
 
+// --- 12. a PDF with form fields says so, and is telling the truth ----------
+/* pdf-lib's copyPages leaves the widget annotations on the page but drops the
+   catalog's /AcroForm, so the result renders identically, still shows fillable
+   boxes in a browser, and is no longer a form to anything that reads form data.
+   Both halves are asserted: that we warn, and that the warning is true —
+   including that it does *not* claim the fields disappear, which they don't. */
+await page.goto(BASE + "/split.html", { waitUntil: "networkidle" });
+await page.setInputFiles("#fileInput", `${FIX}/form.pdf`);
+await page.waitForSelector("#workspace.on");
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 2);
+
+const formMsg = (await page.locator(".panel .error").textContent()).trim();
+check("a PDF with form fields is called out", /form fields/i.test(formMsg), JSON.stringify(formMsg));
+check("the warning names the file", formMsg.includes("form.pdf"));
+check("the warning says what actually breaks", /reads or fills form data/i.test(formMsg));
+// A real file disproved the original "the fields will be gone" wording in one
+// try — the widgets visibly survive. Guard against it coming back.
+check("the warning doesn't claim the fields disappear", !/fields will be gone/i.test(formMsg));
+check("the warning doesn't block the export", !(await page.locator(".btn-action").isDisabled()));
+
+/* Is there an AcroForm left? getFieldObjects() returns null when there isn't —
+   which is pdf.js agreeing with pdf-lib's getForm().getFields() being empty. */
+const formFields = async bytes => page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  const f = await doc.getFieldObjects();
+  return f ? Object.keys(f).length : 0;
+}, [...bytes]);
+
+/* Widget annotations per page — the half that survives, and the reason the
+   message must not say the fields disappear. */
+const widgetCount = async bytes => page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  let n = 0;
+  for(let i = 1; i <= doc.numPages; i++)
+    n += (await (await doc.getPage(i)).getAnnotations()).filter(a => a.subtype === "Widget").length;
+  return n;
+}, [...bytes]);
+
+const srcBytes = fs.readFileSync(`${FIX}/form.pdf`);
+check("the fixture really has fields to lose", (await formFields(srcBytes)) > 0);
+const srcWidgets = await widgetCount(srcBytes);
+
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const splitForm = await download();
+const splitInfo = await inspect(splitForm.bytes);
+check("the split output has the pages", splitInfo.count === 2, splitInfo.count + " pages");
+check("the warning is true — the split output has no form left",
+  (await formFields(splitForm.bytes)) === 0);
+// The other half of the truth: the boxes come through, which is exactly what
+// the message now promises and what the old wording got wrong.
+check("but the widgets do survive, as the message says",
+  (await widgetCount(splitForm.bytes)) === srcWidgets,
+  `${await widgetCount(splitForm.bytes)} of ${srcWidgets}`);
+
+// The negative: an ordinary PDF must not be accused of having fields.
+await loadGamma();
+const plainMsg = (await page.locator(".panel .error").textContent()).trim();
+check("an ordinary PDF gets no form warning", !/form fields/i.test(plainMsg), JSON.stringify(plainMsg));
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();

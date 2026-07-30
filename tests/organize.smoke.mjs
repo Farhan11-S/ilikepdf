@@ -269,6 +269,47 @@ check("no horizontal overflow at 375px", overflow <= 0, "overflow " + overflow +
 check("undo stays reachable at 375px", await page.locator("#undoBtn").isVisible());
 await page.screenshot({ path: path.join(TMP, "organize-375.png") });
 
+// --- 12. a PDF with form fields says so ------------------------------------
+/* Same defect as split's §12: copyPages keeps the widgets and drops the
+   catalog's /AcroForm, so the saved document looks identical and has no form.
+   Organize's twist is that the warning has to survive a second, plain file
+   being added on top — the message is built from every source, not the batch. */
+await page.setViewportSize({ width: 1280, height: 900 });
+await load(["form.pdf"], 2);
+
+const formMsg = () => page.locator(".panel .error").textContent().then(t => t.trim());
+const msg1 = await formMsg();
+check("a PDF with form fields is called out", /form fields/i.test(msg1), JSON.stringify(msg1));
+check("the warning names the file", msg1.includes("form.pdf"));
+check("the warning doesn't block the export", !(await page.locator(".btn-action").isDisabled()));
+
+await page.setInputFiles("#fileInput", `${FIX}/alpha.pdf`);
+await page.waitForFunction(() => document.querySelectorAll(".page-tile").length === 5);
+const msg2 = await formMsg();
+check("the warning survives a plain file being added after it",
+  /form fields/i.test(msg2), JSON.stringify(msg2));
+
+const formFields = async bytes => page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  const f = await doc.getFieldObjects();
+  return f ? Object.keys(f).length : 0;
+}, [...bytes]);
+
+check("the fixture really has fields to lose", (await formFields(fs.readFileSync(`${FIX}/form.pdf`))) > 0);
+
+await page.locator(".btn-action").click();
+await page.waitForSelector("#done.on", { timeout: 20000 });
+const organized = await download();
+check("the saved output has every page", (await textOf(organized.bytes)).length === 5);
+check("the warning is true — the saved output has no form left",
+  (await formFields(organized.bytes)) === 0);
+
+// The negative: ordinary files must not be accused of having fields.
+await load(["alpha.pdf", "beta.pdf"], 5);
+const plainMsg = await formMsg();
+check("ordinary PDFs get no form warning", !/form fields/i.test(plainMsg), JSON.stringify(plainMsg));
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();
