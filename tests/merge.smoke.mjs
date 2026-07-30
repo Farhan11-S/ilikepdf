@@ -338,11 +338,24 @@ const [blindDl] = await Promise.all([
 ]);
 const blindPath = path.join(TMP, "blind-" + blindDl.suggestedFilename());
 await blindDl.saveAs(blindPath);
-const blindPages = await page.evaluate(async arr => {
+/* Page count alone would only prove a page *arrived*. pdf-lib's
+   ignoreEncryption does not decrypt anything — it just declines to throw — so
+   the content is the part worth asserting: without this, a merge that emitted a
+   blank or garbled page would pass. */
+const blindOut = await page.evaluate(async arr => {
   const pdfjsLib = await window.ilikepdf.loadPdfJs();
-  return (await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise).numPages;
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  const last = await doc.getPage(doc.numPages);
+  return {
+    pages: doc.numPages,
+    text: (await last.getTextContent()).items.map(x => x.str).join("").trim(),
+    ops: (await last.getOperatorList()).fnArray.length
+  };
 }, [...fs.readFileSync(blindPath)]);
-check("the file we couldn't preview really is in the output", blindPages === 4, blindPages + " pages");
+check("the file we couldn't preview really is in the output", blindOut.pages === 4, blindOut.pages + " pages");
+check("and its page has content, not just a page count",
+  blindOut.text.includes("Example") && blindOut.ops > 0,
+  `text="${blindOut.text}" ops=${blindOut.ops}`);
 // pdf.js failing to open it logs; that's the condition under test.
 consoleErrors.length = blindNoise;
 

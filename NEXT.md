@@ -8,22 +8,22 @@ every phase in it is now shipped, so treat it as history, not a task list.*
 
 ## Where things stand
 
-All eight tools in `js/core/tools.js` are `ready: true` and working. **531
+All eight tools in `js/core/tools.js` are `ready: true` and working. **532
 assertions across 10 smoke suites, green against source and the built `dist/`.**
-(478 of them were also green against the live site as of Phase 11; the 53 added
+(478 of them were also green against the live site as of Phase 11; the 54 added
 in phase 10 have not been run against production — the deploy is behind.)
 
 ```sh
 npm install && npx playwright install chromium
 npm run serve &            # source, port 8000
-npm test                   # 531 assertions
+npm test                   # 532 assertions
 npm run build              # -> dist/ + dist.zip, prints the size table
 npm run preview &          # dist/, port 8001
 BASE=http://localhost:8001 npm test    # same suites against the build
 ```
 
 Per-suite counts, so you can tell at a glance if something got dropped:
-`home 38 · merge 65 · split 86 · rotate 59 · organize 85 · page-numbers 44 ·
+`home 38 · merge 66 · split 86 · rotate 59 · organize 85 · page-numbers 44 ·
 watermark 55 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 `npm test` chains with `&&`, so the first suite to fail hides every suite after
@@ -123,8 +123,6 @@ table.
 `make.py`: a 595×842 page with one line of Helvetica and a rule. No embedded
 fonts, no images, no compression, no forms, one to sixty pages. The suites prove
 the *logic* is right and prove almost nothing about real files.
-
-Collect a handful of genuinely different PDFs and run all eight tools over each:
 
 **All of it is now done.** The original guesses are kept below with what
 actually happened, because four of the five were wrong and that is the useful
@@ -228,8 +226,8 @@ still 88%). The three that do grew: merge 10,861 · split 11,748 · organize
 11,136, all comfortably inside budget.
 
 **24 new assertions** (merge +6, split +10, organize +8) at the time; phase 10
-finished on **531 across 10 suites**, green against source and `dist/`.
-Per-suite: `home 38 · merge 65 · split 86 · rotate 59 · organize 85 ·
+finished on **532 across 10 suites**, green against source and `dist/`.
+Per-suite: `home 38 · merge 66 · split 86 · rotate 59 · organize 85 ·
 page-numbers 44 · watermark 55 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 Each suite asserts **both halves**: that the warning appears and names the file,
@@ -300,7 +298,7 @@ A summary that promises 3 and delivers 4 is the same class of dishonesty as
 "couldn't read it at all" from "read it, it has no pages" with an `unreadable`
 flag, and the total is rendered as a floor.
 
-Five assertions in `merge.smoke.mjs` §15, against `tests/fixtures/encrypted.pdf`
+Six assertions in `merge.smoke.mjs` §15, against `tests/fixtures/encrypted.pdf`
 — 2.7 KB, the same file from mozilla/pdf.js's corpus, small enough to commit and
 recorded in `tests/real-corpus.json`. Worth knowing: **pdf.js cannot be patched
 to fake this.** `getDocument` is a non-configurable getter, so assigning over it
@@ -312,6 +310,31 @@ opens in every tool and fails at export — late, but the message is right, and
 catching it at intake would mean a full pdf-lib parse of every file.
 `Brotli-Prototype-FileA.pdf` is not encrypted and still unparseable, which is
 the "or damaged" half of that sentence earning its keep.
+
+**The merged page's content really does survive** — asserted, not assumed:
+page 4 of the output carries its text and a non-empty operator list. That is
+worth checking rather than trusting a page count, because `ignoreEncryption:
+true` does not decrypt anything, it only declines to throw.
+
+**One case is still untested, and it is the interesting one.** `encrypted.pdf`
+comes through intact because its `/Encrypt` covers the embedded attachment while
+the page content sits in the clear — hence its upstream name,
+`encrypted-attachment.pdf`. A PDF whose **page streams** are genuinely encrypted
+would be different: pdf-lib cannot decrypt, so it either throws (which is what
+`empty_protected.pdf` does, and that path shows a correct error) or it emits
+garbage while Merge reports success. **No file here does the latter, so whether
+that path exists is unknown, not ruled out.**
+
+It could not be settled this session: there is no qpdf, Ghostscript, mutool or
+LibreOffice on the machine and pdf-lib cannot encrypt, so the fixture can't be
+made locally. One real user-password-protected PDF in `tmp/real/` would answer
+it in a single sweep — the same ask as the signed file in 10.7.
+
+Also true and already documented in README: the merged output has
+`isEncrypted = false`. Merging drops the `/Encrypt` dictionary, so whatever that
+dictionary was protecting is no longer protected. That is inherent to pdf-lib —
+it can ignore encryption on load and never apply it — not something this change
+introduced.
 
 ### 10.7 Digital signatures — every tool breaks them, two different ways
 
@@ -670,9 +693,13 @@ Two things a future session should pick up:
 
 - **`dist/` is well ahead of production.** Phase 10 changed all six PDF→PDF
   pages. Deploy with the staged swap in Phase 11.
-- **One genuinely signed real-world PDF** would close the last honest gap in
-  10.7 — an e-materai or a signed government form, dropped into `tmp/real/`.
-  The structural fixture proves destruction; it cannot prove what Acrobat says.
+- **Two real-world files would close the two honest gaps**, and both just need
+  dropping into `tmp/real/` before a sweep:
+  - **a genuinely signed PDF** (e-materai, or any signed government form) for
+    10.7 — the structural fixture proves destruction, not what Acrobat says;
+  - **a user-password-protected PDF**, one whose *page streams* are encrypted,
+    for 10.5 — to find out whether pdf-lib throws or quietly emits garbage.
+    Neither can be produced on this machine.
 
 The lesson from 11 was that the `.htaccess` was reviewed twice, looked right
 both times, and was still wrong in two ways only a real Apache could show. Phase
