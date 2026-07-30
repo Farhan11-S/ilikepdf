@@ -40,10 +40,15 @@ function findChrome(){
 }
 
 /* Opens a page that records every console error, uncaught exception, and 4xx/5xx
-   response, so "no console errors" can be asserted at the end of a run. */
-export async function launch({ viewport } = {}){
+   response, so "no console errors" can be asserted at the end of a run.
+
+   Anything else passed through lands on the browser context — `isMobile` and
+   `hasTouch` in particular, which is the only way to reach the CSS behind
+   `@media (hover:none)`. A desktop context reports hover:hover, so those rules
+   are unreachable no matter how narrow the viewport is (see mobile.smoke.mjs). */
+export async function launch({ viewport, ...context } = {}){
   const browser = await chromium.launch({ executablePath: findChrome(), args: ["--no-sandbox"] });
-  const ctx = await browser.newContext({ acceptDownloads: true, viewport });
+  const ctx = await browser.newContext({ acceptDownloads: true, viewport, ...context });
   const page = await ctx.newPage();
   const errors = [];
   page.on("console", m => { if(m.type() === "error") errors.push(m.text() + " @ " + JSON.stringify(m.location())); });

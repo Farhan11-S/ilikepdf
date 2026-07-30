@@ -8,14 +8,14 @@ every phase in it is now shipped, so treat it as history, not a task list.*
 
 ## Where things stand
 
-All eight tools in `js/core/tools.js` are `ready: true` and working. **460
-assertions across 9 smoke suites, green against both source and the built
-`dist/`.**
+All eight tools in `js/core/tools.js` are `ready: true` and working. **478
+assertions across 10 smoke suites, green against source, the built `dist/`, and
+the live site.**
 
 ```sh
 npm install && npx playwright install chromium
 npm run serve &            # source, port 8000
-npm test                   # 460 assertions
+npm test                   # 478 assertions
 npm run build              # -> dist/ + dist.zip, prints the size table
 npm run preview &          # dist/, port 8001
 BASE=http://localhost:8001 npm test    # same suites against the build
@@ -23,7 +23,7 @@ BASE=http://localhost:8001 npm test    # same suites against the build
 
 Per-suite counts, so you can tell at a glance if something got dropped:
 `home 38 · merge 51 · split 71 · rotate 53 · organize 74 · page-numbers 41 ·
-watermark 51 · jpg-to-pdf 35 · pdf-to-jpg 46`.
+watermark 51 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 `npm test` chains with `&&`, so the first suite to fail hides every suite after
 it. If something goes red, run the rest individually before concluding it's the
@@ -211,7 +211,7 @@ curl -sI -H 'Accept-Encoding: gzip, deflate, br' https://ilikepdf.muriacare.my.i
 - Hashed vendor files return `immutable`; `.html` returns `no-cache`.
 - `vendor/` serves its index instead of a listing, with vhost `Options Indexes`
   on — which is what 9.3 traded the `Options -Indexes` line for.
-- **All 460 assertions pass against the live site.** The suites take any
+- **All 478 assertions pass against the live site.** The suites take any
   `BASE`, and pointing them at production is the cheapest end-to-end check
   there is — it exercises the brotli path, real TLS, and pdf.js actually
   rendering, none of which `python3 -m http.server` can tell you:
@@ -250,6 +250,32 @@ Moved off `/root/ilikepdf` on 2026-07-30: serving out of root's home only
 worked because `/root` is `drwx--x`, one `chmod` away from publishing the whole
 home directory. Both vhosts (`:80` and `:443`) were updated together — the
 `DocumentRoot` *and* the `<Directory>` block.
+
+### The touch path now has a suite
+
+`tests/mobile.smoke.mjs`, 18 assertions. It exists because every other suite
+runs in a desktop context, which reports `hover: hover` however narrow you make
+the viewport — so three pieces of CSS were unreachable from the whole suite, and
+each is the *only* way to do something on a phone:
+
+| rule | without it, on touch |
+|---|---|
+| `.tile .move` | no reordering at all — drag doesn't exist |
+| `.tile .remove` | no way to remove a file |
+| `.tile-controls` | no way to rotate a page |
+
+`launch()` now passes extra options through to the browser context;
+`isMobile`/`hasTouch` is what flips Chromium to hover:none and pointer:coarse.
+The suite asserts that *first* — without that check the rest would quietly pass
+against desktop CSS and prove nothing.
+
+It also covers the bottom-sheet panel under 900px, and completes a merge and a
+rotate entirely by tap. Green against source, `dist/` and production.
+
+**What it still cannot tell you** is what only real hardware can: iOS Safari
+resizing the viewport as the URL bar hides, whether the tap targets are
+comfortable under a thumb, and memory limits on a large PDF. Worth two minutes
+on an actual phone, but it is no longer an untested path.
 
 ### Still worth doing
 
