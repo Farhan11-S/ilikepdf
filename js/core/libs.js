@@ -64,6 +64,12 @@ export function loadZip(){
   return inject("vendor/jszip.min.js", "JSZip", "Loading the ZIP writer…");
 }
 
+/* The biggest thing here, and the only one nothing loads by default: it is
+   fetched when someone picks their own watermark font and never otherwise. */
+export function loadFontkit(){
+  return inject("vendor/fontkit.min.js", "fontkit", "Loading the font reader…");
+}
+
 /* The tests need to await a library before reaching for its global, and so does
    anything else driving the page from outside. */
-window.ilikepdf = { loadPdfLib, loadPdfJs, loadZip };
+window.ilikepdf = { loadPdfLib, loadPdfJs, loadZip, loadFontkit };

@@ -8,15 +8,15 @@ every phase in it is now shipped, so treat it as history, not a task list.*
 
 ## Where things stand
 
-All eight tools in `js/core/tools.js` are `ready: true` and working. **532
+All eight tools in `js/core/tools.js` are `ready: true` and working. **546
 assertions across 10 smoke suites, green against source and the built `dist/`.**
-(478 of them were also green against the live site as of Phase 11; the 54 added
-in phase 10 have not been run against production — the deploy is behind.)
+(478 of them were also green against the live site as of Phase 11; the 68 added
+in phases 10 and 12.2 have not been run against production — the deploy is behind.)
 
 ```sh
 npm install && npx playwright install chromium
 npm run serve &            # source, port 8000
-npm test                   # 532 assertions
+npm test                   # 546 assertions
 npm run build              # -> dist/ + dist.zip, prints the size table
 npm run preview &          # dist/, port 8001
 BASE=http://localhost:8001 npm test    # same suites against the build
@@ -24,7 +24,7 @@ BASE=http://localhost:8001 npm test    # same suites against the build
 
 Per-suite counts, so you can tell at a glance if something got dropped:
 `home 38 · merge 66 · split 86 · rotate 59 · organize 85 · page-numbers 44 ·
-watermark 55 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
+watermark 69 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
 `npm test` chains with `&&`, so the first suite to fail hides every suite after
 it. If something goes red, run the rest individually before concluding it's the
@@ -32,8 +32,8 @@ only thing broken.
 
 **The build is honest and enforced.** Order is minify → inline → brotli, so the
 `.br` files are compression of already-minified bytes; nothing is double-handled.
-Worst page is `watermark.html` at **12,790 B brotli against a 14,336 B budget
-(89%)**, and `build.mjs` exits non-zero if any page misses.
+Worst page is `watermark.html` at **13,226 B brotli against a 14,336 B budget
+(92%)**, and `build.mjs` exits non-zero if any page misses.
 
 Measured, in case anyone proposes dropping minification because "brotli does it
 anyway" — it does, mostly, but not enough:
@@ -93,8 +93,9 @@ Cost: **+156 B brotli** on `watermark.html`, now 12,415 of 14,336 (87%). Every
 other page is byte-identical, which confirms esbuild keeps `canDraw` off the
 eight pages that don't import it.
 
-**Still deferred: font embedding.** See 12.2 — there is a TODO in
-`helvetica.js` pointing at it.
+**Font embedding was deferred here and is now done** — see 12.2. `canDraw()`
+still gates the built-in Helvetica path, which is what most people will use;
+a supplied font is checked for glyph coverage instead.
 
 ### 9.3 `.htaccess` can 500 the whole site — fixed, but not the suggested way
 
@@ -611,15 +612,70 @@ adding a file, rather than waiting on the race. They fail deterministically
 without the fix — as do the three original ones, which is the useful part: the
 suite is now honest about this instead of intermittent.
 
-### 12.2 Watermark font embedding
+### 12.2 Watermark font embedding — DONE (2026-07-30)
 
-Deferred from 9.2, which shipped the honest message instead. There is a TODO in
-`js/core/helvetica.js` next to `canDraw()`.
+Deferred from 9.2, which shipped "Helvetica can't draw those characters" as the
+honest refusal. This is the complete fix: **Watermark takes a `.ttf` or `.otf`
+from the user and draws any script at all.**
 
-Let users supply a `.ttf` and call `registerFontkit` + `embedFont`, which draws
-anything. Costs `@pdf-lib/fontkit` (~140 KB) and a file input, against about
-1.9 KB of remaining budget on `watermark.html`. **Only if someone asks** — until
-then the button says what it can't do, which is honest and free.
+**The cost estimate here was wrong, and not by a little.** It said
+`@pdf-lib/fontkit` was "~140 KB". Measured:
+
+| | raw | brotli |
+|---|---|---|
+| `@pdf-lib/fontkit` | 758,440 | **265,644** |
+| pdf-lib, for scale | 525,099 | 166,264 |
+| pdf.worker | 1,087,212 | 234,241 |
+
+It is **the largest single file the site ships**, bigger than pdf-lib itself.
+That is survivable only because of *when* it loads: nothing fetches it until
+someone actually picks a font, so the default path is byte-for-byte what it was.
+Anyone reconsidering this should reconsider that property first.
+
+Against the page budget it is cheap, because vendor files are not inlined — only
+the picker and its wiring land in the HTML. **`watermark.html` went from 12,790
+to 13,226 of 14,336 (89% → 92%), +436 B.** That is the tightest page in the
+project and the smallest remaining headroom it has ever had: **1,110 bytes**.
+The next feature that touches Watermark should expect to pay for itself by
+pulling the shared CSS out to a cached file, which README already names as the
+cheapest lever.
+
+**Subsetting is what makes the output cheap.** `embedFont(bytes, { subset: true })`
+puts in only the glyphs used: a 5.9 MB Japanese face added **3 KB** to a test
+document. Without `subset: true` the whole face would go in, and it would be
+absurd. Don't remove it.
+
+**The preview/export invariant survives, which was the real design problem.**
+`helvetica.js` exists so a mark can be measured before pdf-lib loads, and
+"preview and export must agree" is load-bearing — a preview showing 22 marks
+where 12 land is worse than no preview. A supplied font has no metrics we can
+know up front, so instead of a second implementation there is a throwaway
+`PDFDocument` created at pick time whose `embedFont` result the preview measures
+against. Same library, same font bytes, same call the export makes. Asserted
+under tiling, where a wrong width shows up immediately: **198 previewed, 198
+drawn.**
+
+**The two fonts fail in opposite directions**, and the button says so either way:
+
+| | how it fails | what catches it |
+|---|---|---|
+| Helvetica | *throws* at export on non-WinAnsi | `canDraw()` (9.2) |
+| a supplied font | silently draws **blanks** for missing glyphs | `hasGlyphForCodePoint` via fontkit |
+
+The second is the quieter failure and the reason the coverage check exists at
+all; the button names the offending character (`That font has no glyph for 旦`).
+
+`tests/fixtures/tiny.ttf` is **776 bytes and hand-built** by `make-font.mjs` —
+a real TrueType with `head`/`hhea`/`maxp`/`hmtx`/`cmap`/`loca`/`glyf`/`name`/
+`post`/`OS/2`, every glyph the same rectangle. Written rather than copied for
+the same reason `make-signed.mjs` builds its own signature: no licence to reason
+about, no megabyte in the repo, reproducible from source. It maps `A`, `B` and
+`日`, and **deliberately does not map `旦`** — a font that covered everything
+could not test the missing-glyph path.
+
+15 assertions in `watermark.smoke.mjs`, including that the refusal is still
+there without a font, that a non-font file is refused with a message rather than
+throwing, and that the mark really lands on every page.
 
 ---
 
@@ -683,11 +739,11 @@ Learned the hard way; all of these are load-bearing.
 10.1 AcroForm               DONE      2026-07-30  (confirmed; 3 tools, not 2)
 10.2-10.6 the sweep         DONE      2026-07-30  (4 of 5 were non-problems)
 10.7 digital signatures     DONE      2026-07-30  (not predicted; all 6 tools)
-12.2 font embedding         open      only if someone asks
+12.2 font embedding         DONE      2026-07-30  (fontkit was 2x the estimate)
 ```
 
-**Phase 10 is done.** What is left is 12.2, which is explicitly "only if someone
-asks", so the next real work is whatever the next request brings.
+**Everything on the list is done.** The next work is whatever the next request
+brings.
 
 Two things a future session should pick up:
 

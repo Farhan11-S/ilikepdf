@@ -73,6 +73,8 @@
           <input class="field field-colour" type="color" id="colourInput" value="#e5322d">
         </div>
       </div>
+      <button type="button" class="btn-quiet" id="fontPick">Use your own font</button>
+      <p class="field-hint" id="fontName">Helvetica. Latin only — pick a .ttf or .otf for other scripts.</p>
     </div>
 
     <div class="mode-body" data-for="image" hidden>
@@ -126,6 +128,7 @@
 
 <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
 <input type="file" id="imageInput" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
+<input type="file" id="fontInput" accept=".ttf,.otf,font/ttf,font/otf" hidden>
 
 <script type="module" src="js/tools/watermark.js"></script>
 </body>

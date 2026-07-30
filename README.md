@@ -14,7 +14,7 @@ python3 -m http.server 8000
 ```
 
 Any static server works and the source needs no build step. Nothing is fetched
-from the network at runtime either: the three libraries are committed in
+from the network at runtime either: the four libraries are committed in
 `vendor/`. `package.json` pins their versions and drives the tests below.
 
 ## Testing
@@ -112,7 +112,7 @@ watermark.html      Watermark
 jpg-to-pdf.html     JPG to PDF
 pdf-to-jpg.html     PDF to JPG
 favicon.svg
-vendor/             the three libraries, committed
+vendor/             the four libraries, committed
 build.mjs           builds dist/ — inlines, hashes, compresses, checks the budget
 scripts/vendor.mjs  refreshes vendor/ from node_modules
 dist/               build output, gitignored — the only thing uploaded
@@ -170,13 +170,17 @@ script runs — injecting the whole element would make the page jump on load.
 
 ## Libraries
 
-All three live in `vendor/`, committed, so a fresh clone works offline. They are
+All four live in `vendor/`, committed, so a fresh clone works offline. They are
 copied out of `node_modules` by `npm run vendor`; the versions are pinned exactly
 in `package.json`, which is what makes `package-lock.json` the real pin.
 
 - **pdf-lib 1.17.1** — all PDF *writing*. `PDFLib` global.
 - **pdf.js 3.11.174** — preview rendering only. `pdfjsLib` global.
 - **JSZip 3.10.1** — only when a result is more than one file. `JSZip` global.
+- **@pdf-lib/fontkit 1.1.1** — only when someone supplies their own watermark
+  font. `fontkit` global. **The biggest file here at 758 KB raw / 266 KB
+  brotli**, larger than pdf-lib itself, which is exactly why nothing loads it
+  unless asked. It buys the one thing Helvetica cannot do: any script at all.
 
 They are **not** loaded up front. `js/core/libs.js` injects each one on first
 use and caches the promise, because half a megabyte of JavaScript blocking a
@@ -219,6 +223,13 @@ workaround it carried only because it was cross-origin.
 - Rotation is applied on top of a page's existing `/Rotate`, never assigned
   outright. A page can arrive already rotated, and the thumbnail you turned was
   showing that rotation.
+- **Text drawn with a standard font is WinAnsi only**, and pdf-lib *throws*
+  rather than approximating. Watermark checks with `canDraw()` before enabling
+  its button, and lets the user supply a `.ttf`/`.otf` when that isn't enough —
+  which is embedded subset, so a 6 MB face costs a few KB in the output. A
+  supplied font fails the other way, drawing blanks rather than throwing, so it
+  is checked for glyph coverage instead. Both checks live in
+  `missingGlyphs()` in `js/tools/watermark.js`.
 - Anything *drawn* onto a page has the same problem in reverse: pdf-lib draws in
   the page's unrotated space, so a corner is not a fixed pair of coordinates.
   Do the arithmetic in visual space and convert with `js/core/place.js`.

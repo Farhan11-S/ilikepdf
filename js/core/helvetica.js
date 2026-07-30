@@ -50,10 +50,11 @@ export function heightOfText(size){
    points are listed: the curly quotes, the dashes, and the rest of the
    characters a word processor produces without being asked.
 
-   TODO: the complete fix is registerFontkit + embedFont with a font the user
-   supplies, which draws anything. That is a real feature — a ~140 KB dependency
-   (@pdf-lib/fontkit) and a file input — and watermark.html has about 2 KB of
-   budget left. Until someone asks for it, refusing honestly beats throwing. */
+   This is no longer the end of the road: Watermark can take a font from the
+   user (12.2), and `canDraw` only gates the built-in Helvetica path. When a
+   font has been supplied, coverage is asked of that font instead — see
+   `missingGlyphs()` in js/tools/watermark.js. Everything here still applies to
+   the default, which is what most people will use. */
 
 const WINANSI_HIGH = new Set([
   0x20AC, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030,

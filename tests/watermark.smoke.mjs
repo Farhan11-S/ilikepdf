@@ -322,6 +322,102 @@ const wmAfter = await verifySignature(wmOut.bytes);
 check("watermarking leaves the signature in place but broken",
   wmAfter.present && !wmAfter.valid, wmAfter.why);
 
+// --- a supplied font draws what Helvetica can't (12.2) ---------------------
+/* 9.2 shipped "Helvetica can't draw those characters" as the honest refusal.
+   This is the complete fix, and both halves are asserted: that the refusal is
+   still there without a font, and that supplying one lifts it and really does
+   put the character in the output.
+
+   `tiny.ttf` is 776 bytes, built by make-font.mjs. It maps A, B and 日 and
+   deliberately does not map 旦 (U+65E6), so the missing-glyph path has
+   something to catch — a font covering everything couldn't test that. */
+await load("gamma.pdf", 5);
+await page.fill("#textInput", "日");
+await page.waitForTimeout(200);
+check("without a font, CJK is still refused",
+  await page.locator(".btn-action").isDisabled() &&
+  (await page.locator(".btn-action").textContent()) === "Helvetica can't draw those characters");
+check("the hint says a font can be supplied",
+  /\.ttf|\.otf/i.test(await page.locator("#fontName").textContent()));
+
+await page.setInputFiles("#fontInput", `${FIX}/tiny.ttf`);
+await page.waitForFunction(() => !document.querySelector(".btn-action").disabled,
+  null, { timeout: 30000 });
+check("supplying a font lifts the refusal",
+  (await page.locator(".btn-action").textContent()) === "Add watermark");
+check("the hint names the font and says it is subset",
+  /tiny\.ttf/.test(await page.locator("#fontName").textContent()) &&
+  /subset/i.test(await page.locator("#fontName").textContent()),
+  await page.locator("#fontName").textContent());
+
+/* A character the supplied font has no glyph for must be refused too. pdf-lib
+   would not throw here — it would quietly draw nothing, which is the failure
+   mode worth catching, and a different one from Helvetica's. */
+await page.fill("#textInput", "旦");
+await page.waitForTimeout(200);
+check("a glyph the supplied font lacks is refused",
+  await page.locator(".btn-action").isDisabled(), await page.locator(".btn-action").textContent());
+check("and the button names the character",
+  (await page.locator(".btn-action").textContent()).includes("旦"),
+  await page.locator(".btn-action").textContent());
+
+await page.fill("#textInput", "日");
+await page.waitForTimeout(200);
+const cjkMarks = Number((await page.locator(".summary").textContent()).match(/Marks per page:\s*(\d+)/)?.[1]);
+const cjkOut = await runIt();
+const cjkRead = await page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  const out = [];
+  for(let i = 1; i <= doc.numPages; i++)
+    out.push((await (await doc.getPage(i)).getTextContent()).items.map(x => x.str));
+  return out;
+}, [...cjkOut.bytes]);
+check("the CJK mark is really in the output",
+  cjkRead[0].includes("日"), JSON.stringify(cjkRead[0]));
+check("on every page", cjkRead.every(p => p.includes("日")), cjkRead.length + " pages");
+check("the original page text survives", cjkRead[0].some(s => s.includes("GAMMA - page 1 of 5")));
+// Preview and export must agree — the invariant the whole helvetica.js file
+// exists for, now resting on the supplied font's own metrics.
+check("the preview's mark count is what got drawn",
+  cjkRead[0].filter(s => s === "日").length === cjkMarks,
+  `previewed ${cjkMarks}, drew ${cjkRead[0].filter(s => s === "日").length}`);
+
+/* One mark agreeing proves little — the tile count is where a wrong width
+   shows up, because it divides the page by the mark's measured size. */
+await load("gamma.pdf", 5);
+await page.setInputFiles("#fontInput", `${FIX}/tiny.ttf`);
+await page.waitForFunction(() => /subset/.test(document.getElementById("fontName").textContent),
+  null, { timeout: 30000 });
+await page.fill("#textInput", "日");
+await page.fill("#angleInput", "0");
+await page.locator("#tiled").check();
+await page.waitForTimeout(250);
+const tiledPreview = Number((await page.locator(".summary").textContent()).match(/Marks per page:\s*(\d+)/)?.[1]);
+check("a supplied font tiles more than once", tiledPreview > 1, tiledPreview + " marks");
+const tiledOut = await runIt();
+const tiledDrawn = await page.evaluate(async arr => {
+  const pdfjsLib = await window.ilikepdf.loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arr) }).promise;
+  return (await (await doc.getPage(1)).getTextContent()).items.filter(i => i.str === "日").length;
+}, [...tiledOut.bytes]);
+check("and the tiled count previewed is the count drawn",
+  tiledDrawn === tiledPreview, `previewed ${tiledPreview}, drew ${tiledDrawn}`);
+// A 6 MB face would subset to a few KB; this one is already tiny, so just check
+// the font did not arrive whole.
+check("the embedded font is subset, not shipped entire",
+  cjkOut.bytes.length < 20000, (cjkOut.bytes.length / 1024).toFixed(1) + " KB");
+
+// A file that isn't a font at all must say so rather than throw.
+await page.setInputFiles("#fontInput", `${FIX}/notes.txt`);
+await page.waitForFunction(() =>
+  /couldn't be read as a font/i.test(document.querySelector(".panel .error").textContent),
+  null, { timeout: 15000 }).catch(() => {});
+check("a non-font is refused with a message",
+  /couldn't be read as a font/i.test(await page.locator(".panel .error").textContent()),
+  await page.locator(".panel .error").textContent());
+errors.length = 0;   // the deliberate parse failure logs
+
 check("no console errors", errors.length === 0, errors.join(" || "));
 
 await browser.close();

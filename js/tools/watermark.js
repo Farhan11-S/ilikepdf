@@ -14,7 +14,7 @@ import { mountGrid, stampSpots } from "../core/grid.js";
 import { mountDropzone } from "../core/dropzone.js";
 import { mountPanel } from "../core/panel.js";
 import { downloadBlob } from "../core/download.js";
-import { loadPdfLib } from "../core/libs.js";
+import { loadPdfLib, loadFontkit } from "../core/libs.js";
 import { inspectFields, signedWarning } from "../core/forms.js";
 import { fileSize, plural, baseName } from "../core/format.js";
 import { widthOfText, heightOfText, canDraw } from "../core/helvetica.js";
@@ -24,6 +24,7 @@ const $ = id => document.getElementById(id);
 
 const fileInput = $("fileInput");
 const imageInput = $("imageInput");
+const fontInput = $("fontInput");
 const panel = mountPanel($("panel"));
 
 let src = null;      // {name, size, bytes, pages}
@@ -35,6 +36,13 @@ let image = null;    // {name, type, bytes, width, height, bitmap}
 let imageError = "";
 let failure = "";    // why the last attempt failed; cleared by the next one
 let note = "";       // sticky message about the file itself, not the settings
+/* A font the user supplied: {name, bytes, measure, fk}. `measure` is a PDFFont
+   embedded in a throwaway document purely so the preview can ask it how wide a
+   mark is — the same object type the export measures with, which is what keeps
+   preview and export in step for a font whose metrics we cannot know up front.
+   `fk` is the parsed font, used only to ask which glyphs exist. */
+let font = null;
+let fontError = "";
 
 /* The settings, normalised. Range inputs can't produce anything out of bounds,
    but the number fields can be emptied. */
@@ -65,8 +73,12 @@ function ready(){
 function markSize(vw){
   const s = settings();
   if(mode === "text"){
-    // Measured from the same Helvetica metrics pdf-lib will use, so the number
-    // of tiles previewed is the number of tiles drawn — see js/core/helvetica.js.
+    // Measured from the same metrics pdf-lib will use, so the number of tiles
+    // previewed is the number drawn. For Helvetica that's the AFM table in
+    // js/core/helvetica.js; for a supplied font it's the font itself, asked
+    // through pdf-lib so there is no second implementation to disagree.
+    if(font) return { w: font.measure.widthOfTextAtSize(s.text, s.size),
+                      h: font.measure.heightAtSize(s.size) };
     return { w: widthOfText(s.text, s.size), h: heightOfText(s.size) };
   }
   const w = vw * s.scale;
@@ -232,6 +244,60 @@ async function useImage(file){
   update();
 }
 
+/* ---------- the watermark font ----------
+
+   Helvetica is WinAnsi and throws on anything outside it (9.2). A supplied font
+   is the complete fix: fontkit lets pdf-lib embed and subset it, so a 6 MB CJK
+   face adds about 3 KB to the output because only the glyphs actually used go
+   in. It is fetched here and nowhere else — see NEXT.md 12.2 for what it costs. */
+$("fontPick").onclick = () => fontInput.click();
+fontInput.onchange = e => {
+  const file = e.target.files[0];
+  fontInput.value = "";
+  if(file) useFont(file);
+};
+
+function fontLabel(){
+  $("fontName").textContent = font
+    ? `${font.name} · embedded, subset to the glyphs used`
+    : "Helvetica. Latin only — pick a .ttf or .otf for other scripts.";
+  $("fontPick").textContent = font ? "Use a different font" : "Use your own font";
+}
+
+async function useFont(file){
+  fontError = "";
+  failure = "";
+  try{
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const fontkit = await loadFontkit();
+    const { PDFDocument } = await loadPdfLib();
+
+    // A scratch document, only ever used to measure. Embedding into the real
+    // one happens at export, from the same bytes, so the numbers match.
+    const scratch = await PDFDocument.create();
+    scratch.registerFontkit(fontkit);
+    // .slice() into both — pdf-lib and fontkit each detach what they are given.
+    const measure = await scratch.embedFont(bytes.slice(), { subset: true });
+    font = { name: file.name, bytes, measure, fk: fontkit.create(bytes.slice()) };
+  }catch(err){
+    font = null;
+    fontError = `"${file.name}" couldn't be read as a font. TrueType (.ttf) and OpenType (.otf) work.`;
+    console.error(err);
+  }
+  fontLabel();
+  update();
+}
+
+/* Which characters the current font has no glyph for. Helvetica answers through
+   canDraw() because it would throw; a supplied font answers through fontkit
+   because it would silently draw blanks, which is the quieter failure. */
+function missingGlyphs(text){
+  if(!font) return canDraw(text) ? "" : "any";
+  const gone = [...new Set([...String(text)])]
+    .filter(ch => !font.fk.hasGlyphForCodePoint(ch.codePointAt(0)));
+  return gone.join("");
+}
+
 /* ---------- controls ---------- */
 function setMode(next){
   mode = next;
@@ -259,7 +325,7 @@ function update(){
   // update() wiping them a moment later. `note` joined the chain in 10.7: it
   // was being set at intake and then destroyed by this very line, so the
   // large-file warning and the multi-PDF note had never once been visible.
-  panel.setError(failure || imageError || note);
+  panel.setError(failure || imageError || fontError || note);
 
   if(!src) return;
 
@@ -271,13 +337,16 @@ function update(){
     "Pages covered: <strong>" + (marks ? pageItems.length : "—") + "</strong>"
   );
 
-  // Helvetica would throw at export rather than draw something approximate, so
-  // the button says so now instead of failing later — see js/core/helvetica.js.
-  const drawable = mode !== "text" || canDraw(s.text);
-  const label = !ready()  ? (mode === "text" ? "Type some text first" : "Choose an image first")
-              : !drawable ? "Helvetica can't draw those characters"
-              : "Add watermark";
-  panel.setEnabled(ready() && drawable, label);
+  /* Helvetica would throw at export rather than draw something approximate, and
+     a supplied font would quietly draw blank boxes. Either way the button says
+     so now instead of disappointing later. */
+  const missing = mode === "text" ? missingGlyphs(s.text) : "";
+  const label = !ready()   ? (mode === "text" ? "Type some text first" : "Choose an image first")
+              : !missing   ? "Add watermark"
+              : !font      ? "Helvetica can't draw those characters"
+              : `That font has no ${missing.length > 3 ? "glyph for some of those characters"
+                                                       : `glyph for ${missing}`}`;
+  panel.setEnabled(ready() && !missing, label);
 }
 
 /* ---------- export ---------- */
@@ -290,7 +359,17 @@ panel.onAction(async () => {
     const s = settings();
     const out = await PDFDocument.load(src.bytes.slice(), { ignoreEncryption: true });
 
-    const font = mode === "text" ? await out.embedFont(StandardFonts.Helvetica) : null;
+    let drawFont = null;
+    if(mode === "text"){
+      if(font){
+        out.registerFontkit(await loadFontkit());
+        // Same bytes the preview measured, so the tile count already shown is
+        // the tile count drawn. subset: true is what keeps a 6 MB face cheap.
+        drawFont = await out.embedFont(font.bytes.slice(), { subset: true });
+      }else{
+        drawFont = await out.embedFont(StandardFonts.Helvetica);
+      }
+    }
     const embedded = mode === "image" ? await embedImage(out, image) : null;
     const colour = hexToRgb(s.colour, rgb);
 
@@ -316,7 +395,7 @@ panel.onAction(async () => {
 
         if(mode === "text"){
           page.drawText(s.text, {
-            x: p.x, y: p.y, size: s.size, font,
+            x: p.x, y: p.y, size: s.size, font: drawFont,
             color: colour, opacity: s.opacity, rotate
           });
         }else{
@@ -358,6 +437,10 @@ $("downloadBtn").onclick = () => downloadBlob(result.blob, result.filename);
 $("restartBtn").onclick = () => {
   src = null; doc = null; result = null; pageItems = []; image = null;
   imageError = ""; failure = ""; note = "";
+  // The font is a setting, not a document — but restart means "start over", and
+  // a font left behind would silently apply to the next PDF.
+  font = null; fontError = "";
+  fontLabel();
   grid.reset();
   panel.setError("");
   $("heroError").classList.remove("on");

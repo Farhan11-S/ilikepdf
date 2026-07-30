@@ -1,4 +1,4 @@
-/* Copies the four library files we ship into vendor/.
+/* Copies the five library files we ship into vendor/.
  *
  *   npm run vendor
  *
@@ -20,7 +20,11 @@ const FILES = [
   ["pdf-lib/dist/pdf-lib.min.js",        "pdf-lib.min.js"],
   ["pdfjs-dist/build/pdf.min.js",        "pdf.min.js"],
   ["pdfjs-dist/build/pdf.worker.min.js", "pdf.worker.min.js"],
-  ["jszip/dist/jszip.min.js",            "jszip.min.js"]
+  ["jszip/dist/jszip.min.js",            "jszip.min.js"],
+  // Only fetched when someone supplies their own watermark font. It is the
+  // largest file here by some way — see NEXT.md 12.2 for the measurement and
+  // why it is still worth shipping on demand.
+  ["@pdf-lib/fontkit/dist/fontkit.umd.min.js", "fontkit.min.js"]
 ];
 
 fs.mkdirSync(OUT, { recursive: true });
