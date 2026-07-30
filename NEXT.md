@@ -1,508 +1,128 @@
-# IlikePDF — what to do next
+# IlikePDF — working notes
 
-*Written for a Claude session starting cold on this repo. Read this, then
-`README.md` for the conventions. `CLAUDE_CODE_HANDOFF.md` is the original spec —
-every phase in it is now shipped, so treat it as history, not a task list.*
+*The one document for anyone picking this up cold. `README.md` answers "what is
+this and how do I run it"; this answers "what will bite me, and what happened
+already". There used to be a `CLAUDE_CODE_HANDOFF.md` holding the original spec
+for a single-file `ilikepdf.html` with CDN scripts — every phase in it shipped,
+and parts of it had gone actively wrong, so it is gone.*
 
 ---
 
 ## Where things stand
 
-All eight tools in `js/core/tools.js` are `ready: true` and working. **546
-assertions across 10 smoke suites, green against source and the built `dist/`.**
-(478 of them were also green against the live site as of Phase 11; the 68 added
-in phases 10 and 12.2 have not been run against production — the deploy is behind.)
+All eight tools in `js/core/tools.js` are `ready: true` and working.
+**548 assertions across 10 suites against source, 555 against `dist/`** — the
+extra seven are build-only markup (prefetch links, speculation rules) that
+doesn't exist in source.
 
 ```sh
 npm install && npx playwright install chromium
-npm run serve &            # source, port 8000
-npm test                   # 546 assertions
-npm run build              # -> dist/ + dist.zip, prints the size table
-npm run preview &          # dist/, port 8001
-BASE=http://localhost:8001 npm test    # same suites against the build
+npm run serve &                        # source, port 8000
+npm test                               # 548
+npm run build                          # -> dist/ + dist.zip, prints the size table
+npm run preview &                      # dist/, port 8001
+BASE=http://localhost:8001 npm test    # 555
 ```
 
-Per-suite counts, so you can tell at a glance if something got dropped:
-`home 38 · merge 66 · split 86 · rotate 59 · organize 85 · page-numbers 44 ·
+Per-suite, against source, so a dropped assertion is obvious:
+`home 40 · merge 66 · split 86 · rotate 59 · organize 85 · page-numbers 44 ·
 watermark 69 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
 
-`npm test` chains with `&&`, so the first suite to fail hides every suite after
-it. If something goes red, run the rest individually before concluding it's the
-only thing broken.
-
-**The build is honest and enforced.** Order is minify → inline → brotli, so the
-`.br` files are compression of already-minified bytes; nothing is double-handled.
-Worst page is `watermark.html` at **8,227 B brotli against a 14,336 B budget
-(57%)**, and `build.mjs` exits non-zero if any page misses.
-
-Pages no longer carry the whole core: since 12.3 the nine entries are bundled in
-one pass and what more than one page uses is lifted into content-hashed shared
-chunks in `dist/js/`, cached for a year.
-
-Measured, in case anyone proposes dropping minification because "brotli does it
-anyway" — it does, mostly, but not enough:
-
-| watermark.html | raw | gzip | brotli |
-|---|---|---|---|
-| unminified | 59,140 | 16,072 | 14,119 |
-| minified | 41,942 | 13,812 | 12,209 |
-| minifying saves | 17,198 | 2,260 | **1,910 (13.5%)** |
-
-Unminified, the worst page lands at 98% of budget. Minification is buying
-headroom for the next feature, not bandwidth. (Those figures were measured
-before 12.3 split the core out, so the absolute numbers are historical — the
-ratio is the point and it hasn't moved.)
-
----
-
-## Phase 9 — Three defects — DONE (2026-07-29)
-
-All three fixed, each with assertions that were confirmed failing first. Two of
-the three write-ups above were wrong about the mechanism; both corrections are
-recorded here because they are the kind of thing that gets re-derived otherwise.
-
-### 9.1 Export failures are invisible in Watermark and Split — fixed
-
-As diagnosed. `catch` set the message, `finally` called `update()`, `update()`
-overwrote it. Both tools now keep a `failure` module variable that `update()`
-renders first — `failure || imageError` in `watermark.js`, `failure || error ||
-note` in `split.js` — so the message is part of what the view renders rather
-than something written behind its back.
-
-`failure` is cleared at the start of each attempt, on intake, and on restart.
-Watermark also clears it in `useImage()`: without that, a stale failure outranks
-"that isn't a PNG or JPG" from the next image picked, which is the same class of
-bug one layer up.
-
-Three assertions per suite (`split.smoke.mjs` §11, `watermark.smoke.mjs` §10).
-They patch `window.PDFLib.PDFDocument.load` to throw. Two things they have to
-get right: pdf-lib must already be on the page, so they export once and then use
-`#restartBtn` rather than reloading, which would discard the patch; and the
-deliberate `console.error` has to be discounted from the harness's error list
-(`errors.length = mark`) or the correct behaviour fails "no console errors".
-
-### 9.2 Watermark can't draw non-Latin text — fixed, with the honest message
-
-`canDraw()` in `js/core/helvetica.js` gates the action button, which now reads
-"Helvetica can't draw those characters".
-
-**The write-up was wrong that helvetica.js "already knows the encodable range".**
-It only carried ASCII 32–126 and fell back to the width of "n" for everything
-else, so the WinAnsi high range had to be added: `0xA0–0xFF` plus the 27
-non-contiguous code points WinAnsi rearranges (curly quotes, the dashes, €, …).
-Getting that list right is the whole job — a predicate that is too strict would
-refuse ordinary European text, which is worse than the bug it fixes, so
-`watermark.smoke.mjs` asserts both directions (`日本語テキスト` refused,
-`Café — naïve` allowed).
-
-Cost: **+156 B brotli** on `watermark.html`, now 12,415 of 14,336 (87%). Every
-other page is byte-identical, which confirms esbuild keeps `canDraw` off the
-eight pages that don't import it.
-
-**Font embedding was deferred here and is now done** — see 12.2. `canDraw()`
-still gates the built-in Helvetica path, which is what most people will use;
-a supplied font is checked for glyph coverage instead.
-
-### 9.3 `.htaccess` can 500 the whole site — fixed, but not the suggested way
-
-**The suggested fix would not have worked.** `<IfModule mod_autoindex.c>` asks
-whether a *module is loaded*; the 500 comes from `AllowOverride` not permitting
-the `Options` directive, which `<IfModule>` has no bearing on. A host that
-withholds `AllowOverride Options` still returns 500 with the wrapper in place.
-
-So the line is gone rather than wrapped, and `DirectoryIndex index.html` went
-with it — that one needs `AllowOverride Indexes`, another permission class, and
-`index.html` is mod_dir's built-in default anyway. What remains is one coherent
-rule: **everything in the generated `.htaccess` needs `AllowOverride FileInfo`
-and is guarded for module presence.** The comment at the top of `htaccess()`
-says so, including why `Options -Indexes` must not come back.
-
-`build.mjs` now writes a one-line `dist/vendor/index.html`, which is what
-actually stops the listing — `vendor/` was the only directory without an index.
-It is written directly, not through the page loop, so it stays out of the size
-table.
-
----
-
-## Phase 10 — Test against PDFs that weren't made by us
-
-**This is the real gap.** Every fixture in `tests/fixtures/` is generated by
-`make.py`: a 595×842 page with one line of Helvetica and a rule. No embedded
-fonts, no images, no compression, no forms, one to sixty pages. The suites prove
-the *logic* is right and prove almost nothing about real files.
-
-**All of it is now done.** The original guesses are kept below with what
-actually happened, because four of the five were wrong and that is the useful
-part:
-
-| kind | predicted | actual |
-|---|---|---|
-| scanned document (big JPEG per page) | memory during PDF→JPG at 3× | **fine** (10.4) |
-| CJK or Cyrillic with embedded fonts | page-numbers/watermark drawing over it | **fine** (10.2) |
-| 300+ pages | `IntersectionObserver` queue, `copyPages` cost | **fine**, worst tool 21s (10.3) |
-| a fillable form (AcroForm) | copyPages drops form fields | **confirmed**, but not the way predicted (10.1) |
-| password-protected | the "name the file" error path | **one real bug**, in Merge (10.5) |
-| PDF/A or a linearised file | nothing expected | **nothing** (10.6) |
-| *(not predicted at all)* | — | **digital signatures — every tool (10.7)** |
-
-Do **not** commit large binary fixtures. `npm run fetch-real` pulls them into
-gitignored `tmp/real/` from a committed manifest; only add a fixture if it's
-small and reproducible.
-
-### 10.1 AcroForm — confirmed, but the first write-up overclaimed (2026-07-30)
-
-**The bet paid off, and the mechanism was wrong in a way that matters.** The
-prediction was that `copyPages` "doesn't carry form field widgets across". It
-carries them across fine — every widget survives on the pages. What it drops is
-the catalog's **`/AcroForm` dictionary**, which is the thing that makes them a
-*form*. The widgets arrive orphaned.
-
-Measured on a filled-in two-page generated form:
-
-| | source | after copyPages |
-|---|---|---|
-| pdf-lib `getForm().getFields()` | 5 | **0** |
-| pdf.js `getFieldObjects()` | 6 keys | **null** |
-| widget annotations on pages | 6 | 6 |
-| pdf.js `getAnnotations()` page 1 | 3 Widgets, named | 3 Widgets, named |
-| **rendered page 1, differing pixels** | — | **0 of 500,990** |
-
-#### The correction, and how it was caught
-
-**The first version of this section — and the warning that shipped with it —
-said "the pages will look right, but the fields will be gone". That is wrong,
-and a real file disproved it immediately.** Tested against hexapdf's public
-example, <https://hexapdf.gettalong.org/examples/acro_form.pdf>, 14 fields,
-19 widgets:
-
-| | source | after merge |
-|---|---|---|
-| catalog `/AcroForm` | yes (`/Fields` 14, `/DR`, `/DA`) | **absent** |
-| widgets on pages | 19 | **19** |
-| …with `/FT`, `/Parent`, `/AP`, `/V` | 13 / 6 / 19 / 12 | **13 / 6 / 19 / 12** |
-| pdf.js "editable widgets a viewer renders" | 19 | **19** |
-| pdf-lib `getFields()` | 14 | **0** |
-
-So the widgets survive *completely*, values included, and **a viewer that builds
-its form UI from page annotations still shows fillable boxes** — that is pdf.js
-and so Firefox, PDFium and so Chrome. Open the merged file in a browser and it
-looks and behaves like a working form. The original wording was therefore a
-claim any user could disprove on the first try, which is worse than not warning
-at all: it teaches people to ignore the message.
-
-**What is actually lost is the document-level form** — `/Fields`, `/DR`, `/DA`,
-the field hierarchy, calculation order. Anything that reads or fills form data
-(pdf-lib included, so our own tools) no longer sees a form; FDF/XFDF export and
-import, programmatic filling and flattening all break. The current wording
-claims exactly that and nothing more:
-
-> "X" has form fields. Being merged keeps the boxes and what's in them, but not
-> the form itself — software that reads or fills form data will no longer see one.
-
-`split.smoke.mjs` §12 now asserts **both** directions: that the output has no
-form left, *and* that the widgets survive intact, plus a guard that the message
-never again says "fields will be gone". The lesson is the one Phase 10 exists
-for — the generated fixture and the real file agreed on the mechanism and
-disagreed on what it means to a user, and only the real file could say which.
-
-**Three tools, not two.** The prediction named Split and Organize. **Merge has
-it too** — same `copyPages` call, same loss. `rotate.js`, `page-numbers.js` and
-`watermark.js` all `PDFDocument.load` and mutate in place, never copy, and the
-form survives them intact (verified: 5 fields in, 5 fields out through a
-rotate). That split — copiers lose forms, mutators don't — is the rule to carry
-forward, and it is why `forms.js` is imported by exactly three tools.
-
-**Detected, not implemented**, as called for. `js/core/forms.js` is `hasForm()`
-over pdf.js's `getFieldObjects()` plus one shared `formWarning()` wording. Two
-things about the shape of it:
-
-- **Detection is free.** All three tools already have a pdf.js document open for
-  thumbnails, so nothing is parsed twice. For Merge that meant putting it in
-  `thumbs.hydrate()` (the only caller is `merge.js`), which fills in `pages`,
-  `thumb` and now `form` from the one open document — reopening every file just
-  to ask would have doubled the cost of adding one.
-- **Merge needed the 9.1 treatment.** The flag arrives from hydration, one file
-  at a time, *after* intake has painted — so the message could not be written
-  once at intake and left alone. `merge.js` now has the same `failure` +
-  `showNotes()` shape `split.js` and `watermark.js` got in 9.1, and it is the
-  same reason: a late thumbnail must not wipe the message.
-
-esbuild keeps `forms.js` off the five pages that don't import it — checked, and
-`watermark.html` came out **14 bytes smaller** than before (12,580 of 14,336,
-still 88%). The three that do grew: merge 10,861 · split 11,748 · organize
-11,136, all comfortably inside budget.
-
-**24 new assertions** (merge +6, split +10, organize +8) at the time; phase 10
-finished on **532 across 10 suites**, green against source and `dist/`.
-Per-suite: `home 38 · merge 66 · split 86 · rotate 59 · organize 85 ·
-page-numbers 44 · watermark 55 · jpg-to-pdf 35 · pdf-to-jpg 46 · mobile 18`.
-
-Each suite asserts **both halves**: that the warning appears and names the file,
-*and* that the warning is true — the exported document really does come back
-with zero fields. Confirmed failing first by stubbing `hasForm()` to `false`:
-the warning assertions failed, the "output has no form left" assertions kept
-passing, which is what proves the defect is real and not an artefact of the
-detector. Each suite also asserts the negative, that an ordinary PDF is not
-accused, and that the warning never disables the export — it is a warning, not a
-refusal.
-
-`tests/fixtures/form.pdf` (6.8 KB, 2 pages, 5 fields) is committed, with
-`make-form.mjs` beside it. Built with pdf-lib's own form API rather than taken
-from a real-world file, so it is small, reproducible, and uses the exact library
-version the site ships — what it proves about `copyPages` is about *our*
-pdf-lib. Fields are deliberately spread across both pages; a fixture with
-everything on page 1 would pass a split that dropped page 2's fields.
-
-**Still not doing form copying.** It means rebuilding the field hierarchy, `/DA`
-and `/DR` resources, appearance streams and radio-group kids — squarely in the
-class of things this project declines to half-do. The message is the fix.
-
-### 10.2–10.6 — the sweep (2026-07-30)
-
-105 runs, every tool over all 15 files. **Four of the five predicted problems
-were not problems at all**, which is worth as much as a defect would have been:
-the guesses in the table above were mostly wrong, and now we know rather than
-suspect.
-
-| case | verdict |
-|---|---|
-| **10.2** embedded CID fonts (Arabic, big CMaps) | **clean** — all seven tools; page numbers and watermark draw over them without complaint |
-| **10.3** 352 pages (`freeculture.pdf`) | **clean and fast** — merge 1.5s · split 1.7s · organize 1.8s · rotate 2.5s · numbers 2.3s · watermark 21s · PDF→JPG 17s for 352 JPGs (55.7 MB zip). No `IntersectionObserver` trouble, no `copyPages` cost worth naming |
-| **10.4** 6–8 MB single-page scans | **clean** — 1.3–2s each, including PDF→JPG at 3× |
-| **10.6** PDF/A-1b, and linearised files | **clean** — nothing to report, as predicted |
-| **10.5** encrypted / damaged | **one real bug, now fixed** — below |
-
-**`copyPages` throws away unreferenced objects.** `issue3188.pdf` is 7.9 MB and
-comes out of merge, split and organize at **0.1 MB** — 224 `/Image` objects
-gone. That looked like catastrophic content loss and isn't: the render is
-**pixel-identical, 0 of 721,140 pixels different**, because those images were
-orphans nothing on the page referenced. The in-place tools keep them (7.7 MB
-out) since they never rebuild the document. Do **not** turn this into a
-"compress" feature — it is entirely file-dependent (`22060_A1_01_Plans.pdf`,
-also a big scan, comes out the same size) and it is deletion of dead objects,
-not compression. See the standing refusal at the bottom of this file.
-
-#### 10.5 — Merge accepted a file every other tool refused, and lied about it
-
-`encrypted-attachment.pdf` is refused at intake by Split, Organize, Rotate, Page
-numbers, Watermark and PDF→JPG — all six open with pdf.js, which throws. Merge
-does not open it with pdf.js at all: `store.addFiles` just reads bytes and
-`thumbs.hydrate` swallows the failure. So it merged the file happily, because
-**pdf-lib is more tolerant than pdf.js** and read it fine.
-
-Merge being able to do more is not the bug. The bug was that it said nothing
-about it and got the arithmetic wrong:
-
-| | before | after |
-|---|---|---|
-| the card | `0 pages · 3 KB` | `can't preview · 3 KB` |
-| the summary | `Pages in result: 3` | `Pages in result: 3+ (1 not previewed)` |
-| the panel | *(silent)* | *"…can't be previewed here — pdf-lib is more forgiving than the preview, so it will still be merged."* |
-| the actual output | **4 pages** | 4 pages |
-
-A summary that promises 3 and delivers 4 is the same class of dishonesty as
-10.1's warning: a number the UI cannot back. `hydrate()` now distinguishes
-"couldn't read it at all" from "read it, it has no pages" with an `unreadable`
-flag, and the total is rendered as a floor.
-
-Six assertions in `merge.smoke.mjs` §15, against `tests/fixtures/encrypted.pdf`
-— 2.7 KB, the same file from mozilla/pdf.js's corpus, small enough to commit and
-recorded in `tests/real-corpus.json`. Worth knowing: **pdf.js cannot be patched
-to fake this.** `getDocument` is a non-configurable getter, so assigning over it
-silently does nothing and the test passes for the wrong reason. That was tried
-first.
-
-The other two are working as intended and need no change. `empty_protected.pdf`
-opens in every tool and fails at export — late, but the message is right, and
-catching it at intake would mean a full pdf-lib parse of every file.
-`Brotli-Prototype-FileA.pdf` is not encrypted and still unparseable, which is
-the "or damaged" half of that sentence earning its keep.
-
-**The merged page's content really does survive** — asserted, not assumed:
-page 4 of the output carries its text and a non-empty operator list. That is
-worth checking rather than trusting a page count, because `ignoreEncryption:
-true` does not decrypt anything, it only declines to throw.
-
-**One case is still untested, and it is the interesting one.** `encrypted.pdf`
-comes through intact because its `/Encrypt` covers the embedded attachment while
-the page content sits in the clear — hence its upstream name,
-`encrypted-attachment.pdf`. A PDF whose **page streams** are genuinely encrypted
-would be different: pdf-lib cannot decrypt, so it either throws (which is what
-`empty_protected.pdf` does, and that path shows a correct error) or it emits
-garbage while Merge reports success. **No file here does the latter, so whether
-that path exists is unknown, not ruled out.**
-
-It could not be settled this session: there is no qpdf, Ghostscript, mutool or
-LibreOffice on the machine and pdf-lib cannot encrypt, so the fixture can't be
-made locally. One real user-password-protected PDF in `tmp/real/` would answer
-it in a single sweep — the same ask as the signed file in 10.7.
-
-Also true and already documented in README: the merged output has
-`isEncrypted = false`. Merging drops the `/Encrypt` dictionary, so whatever that
-dictionary was protecting is no longer protected. That is inherent to pdf-lib —
-it can ignore encryption on load and never apply it — not something this change
-introduced.
-
-### 10.7 Digital signatures — every tool breaks them, two different ways
-
-**Not in the original table, and the biggest defect the phase turned up.** A
-signature covers a byte range of the file, so anything that re-saves the
-document breaks it. pdf-lib re-saves everything. There is no safe tool.
-
-But the *way* it breaks splits along the same line 10.1 found, and the two
-outcomes are not equally bad:
-
-| | Merge · Split · Organize | Rotate · Page numbers · Watermark |
-|---|---|---|
-| how they write | `copyPages` into a new document | load, mutate, save in place |
-| the AcroForm (10.1) | dropped | **kept** |
-| the signature | **removed entirely** | **kept, and no longer verifies** |
-| what a viewer says | an unsigned document | *"this document has been altered"* |
-
-The in-place case is the worse one. A file that has quietly become unsigned is
-merely diminished; a file that still claims a signature and fails it looks
-**tampered with**, which is a much louder accusation to hand someone
-unexpectedly.
-
-A signature is an AcroForm field, so before this the 10.1 detector answered
-"yes, has fields" for a signed PDF and told its owner about form data they
-hadn't got. `inspectFields()` now separates the two on pdf.js's own field
-`type`, and returns `{form, signed}`.
-
-The warning goes on **six** tools, not eight: PDF→JPG and JPG→PDF are left out
-because an image cannot carry a signature, so there the loss is the point of the
-conversion rather than a surprise. One wording covers both mechanisms —
-
-> "X" is digitally signed. The signature won't survive being merged.
-
-— because the only thing the user has to decide is whether to go ahead, and
-which mechanism applies to which tool belongs here rather than in a panel.
-
-**A pre-existing bug fell out of this.** Wiring the message into Watermark
-showed that its `update()` rendered `failure || imageError` and clobbered
-anything else, and intake sets its note and then calls `update()`. So
-Watermark's large-file warning and its "one PDF at a time" note **had never been
-visible at all** — 9.1 fixed the failure path there and left the notes outside
-the render chain. `note` is now part of what `update()` renders, and
-`watermark.smoke.mjs` asserts the message survives a settings change, which is
-the thing that used to destroy it.
-
-`tests/fixtures/signed.pdf` (6.5 KB, 2 pages) carries a real AcroForm `/Sig`
-field with a correct `/ByteRange`; `/Contents` holds a SHA-256 of the bytes that
-range covers instead of a CMS blob, so `tests/signature.mjs` can verify it with
-no certificate and no new dependency. `verifySignature()` locates the field
-**through pdf-lib rather than by scanning for `/ByteRange`** — that matters:
-pdf-lib saves with object streams by default, so after an in-place tool the
-signature is still there but compressed, and a byte scan reports it missing.
-Getting that wrong inverts the finding, and it did on the first attempt.
-
-**Honest limit:** this proves detection and destruction. It cannot tell you what
-Acrobat says about a real CMS signature — that still wants one genuinely signed
-real-world file, ideally an e-materai or signed government form, which is also
-more representative of what this site's users actually upload. Dropping one into
-`tmp/real/` is all it takes.
-
-### The rig
-
-Phase 10 is repeatable now rather than a session's worth of ad hoc runs:
+`npm test` chains with `&&`, so the first failure hides every suite after it. If
+something goes red, run the rest individually before concluding it's the only
+thing broken.
+
+**Before you start a server, check what is already on the port.** Something else
+holding 8000 doesn't fail loudly — the suites quietly test whatever is there. It
+cost a wrong diagnosis once.
 
 ```sh
-npm run fetch-real     # tests/real-corpus.json -> tmp/real/, sha256 checked
-npm run probe:real     # every tool over every file; writes tmp/real-report.md
+curl -s http://localhost:8000/js/core/grid.js | head -1    # JS, not HTML
 ```
 
-`tests/real-corpus.json` is committed and lists 15 files with their hashes and
-what each is for; the binaries stay out of the repo per this phase's own rule,
-and `tmp/` was already gitignored. Anything dropped into `tmp/real/` by hand is
-swept too, manifest or not.
+### The size budget
 
-`tests/real.probe.mjs` is **not** in `npm test` — it needs files a clean
-checkout doesn't have. It runs every tool over every file rather than only the
-predicted pairs, which is the lesson of 10.1 turned into a habit.
+Every served file under **14,336 bytes brotli**, roughly TCP's initial
+congestion window. `build.mjs` exits non-zero if a page misses. Worst page is
+`watermark.html` at **8,206 B (57%)**.
 
-One thing it got wrong on its first run, worth keeping in mind for anything
-similar: it waited only for `#done.on`, so a tool that *correctly* reported a
-failed export looked like a 120-second hang. It now waits for the progress bar
-to stop and either outcome to appear.
+**The window belongs to the connection, not the file.** Splitting one 13 KB
+response into two 7 KB ones buys no second window — both draw on the first, and
+the second can't be requested until the first arrives. "Every file under 14 KB"
+is a weaker property than "the page arrives in one round trip"; only the first
+is still true. Production is HTTP/1.1, so there's no multiplexing either.
+
+Pages inline their own JS and the shared CSS; what more than one page uses lives
+in content-hashed chunks under `dist/js/`, cached a year. `index.html` is the
+exception and is built unsplit — see 12.4.
 
 ---
 
-## Phase 11 — Deployed and verified (2026-07-30)
+## Things that will bite you
+
+All learned the hard way, all load-bearing.
+
+- **`.slice()` into pdf-lib and pdf.js, always.** Both detach the buffer and the
+  second read then fails silently — including "export twice in a row".
+- **Preview and export must agree.** The watermark tile count comes from
+  `js/core/helvetica.js`, which carries pdf-lib's own AFM widths so the number
+  of marks previewed is the number drawn. Regenerate with
+  `node tests/fixtures/make-metrics.mjs` if the pdf-lib pin changes. A supplied
+  font is measured against a `PDFFont` embedded in a throwaway document, for the
+  same reason — never a second implementation that can drift.
+- **Anything drawn on a page needs `js/core/place.js`.** pdf-lib draws in the
+  page's *unrotated* space; a corner is not a fixed pair of coordinates.
+  `tests/fixtures/prerotated.pdf` is the regression case.
+- **`grid.js` decoration happens in `decorate()`, never at tile construction.** A
+  late thumbnail calls `replaceChildren` on `.thumb-box` and destroys anything
+  built up front.
+- **`refresh()` is called by things the user didn't do.** Tools hydrate entries
+  in the background and notify per entry, so a rebuild lands at any moment.
+  Anything that must survive one belongs *inside* `refresh()`: position (FLIP),
+  thumbnails (the cache), focus (`focusMemo`/`restoreFocus`).
+- **A message the view doesn't own gets wiped.** Any panel text set outside the
+  function that renders the panel will be destroyed by the next render. This has
+  now caused three separate bugs (9.1, 12.2's watermark note, and Merge's
+  hydration race). Keep it in a module variable the render function reads.
+- **Vendor paths in source stay literal and relative** (`"vendor/pdf.min.js"`,
+  never built from a variable). The build rewrites them by string replace and
+  *throws* if any survive, which is what keeps `dist/` working from a
+  subdirectory. The same is true of chunk paths — and those resolve against two
+  different bases, see 12.3.
+- **Run the whole suite, not just the one you touched.** The core modules are
+  shared; a change for one tool has broken another in phases 1, 2, 4 and 5.
+- **Assert *when*, not just *whether*.** Every suite passed through 12.3 while
+  the landing page showed an empty box for 283 ms, because they all asked
+  whether the grid rendered and never how long it took.
+
+---
+
+## What pdf-lib cannot do
+
+Don't build UI that implies otherwise, and don't ship a placeholder that
+pretends. If a request seems to need one of these, say so plainly.
+
+- **Compress.** All it can do is strip metadata and re-save with
+  `useObjectStreams: true` — low single-digit percentages. Not what anyone means
+  by compressing a PDF.
+  *(`copyPages` does drop unreferenced objects, which shrank one real 7.9 MB
+  file to 0.1 MB pixel-identically. That is deletion of orphans, not
+  compression, and it is entirely file-dependent. Do not turn it into a feature.)*
+- **Word/Excel conversion.** Not possible client-side at all. Both conversion
+  pages say so in `.hero-note` — leave that text in.
+- **Encrypt or password-protect.** It can only *ignore* existing encryption on
+  load, never apply it.
+- **Copy a form.** `copyPages` carries the widgets but not the catalog's
+  `/AcroForm` — see 10.1.
+- **Preserve a signature.** Nothing can; a signature covers a byte range and
+  every save rewrites it — see 10.7.
+
+---
+
+## Deploying
 
 Live at **https://ilikepdf.muriacare.my.id** — Apache 2.4.58 on Ubuntu, docroot
-`/var/www/ilikepdf`, `AllowOverride All`. The `.htaccess` is no longer untested by
-construction, and testing it immediately found two bugs in it.
-
-### Both failure modes in the old warning actually happened
-
-The first deploy served **binary garbage**, exactly as this file predicted. Two
-independent causes, and neither is visible from a status code — the site
-returned 200 throughout.
-
-**1. mod_headers was not enabled.** `mod_rewrite` was, so the rewrite happily
-served `pdf.min.js.br` while the `<IfModule mod_headers.c>` block — the thing
-that adds `Content-Encoding: br` — was skipped entirely. The browser got brotli
-bytes labelled `application/javascript`. This is the default Ubuntu Apache
-install, not an exotic host: **mod_rewrite is enabled out of the box and
-mod_headers is not.**
-
-The old `.htaccess` guarded the two modules *independently*, which quietly
-assumed that rewriting without labelling was a survivable state. It isn't — it
-is the one combination that must never happen. The rewrite now lives **inside**
-the mod_headers guard, so a host with one and not the other serves plain files.
-
-**2. mod_deflate re-compressed the pre-compressed response.** Even with
-mod_headers on, `AddOutputFilterByType DEFLATE text/html …` (Ubuntu's default
-`deflate.conf`) gzipped the `.br`/`.gz` payload a second time while
-`Content-Encoding` still claimed one layer. The tell was a served
-`Content-Length` of 89,039 for an on-disk `.gz` of 89,006 — bigger, because
-gzipping gzip does not compress. Browsers send `gzip, deflate, br`, so this hit
-every request, not an edge case.
-
-Fixed by setting `no-gzip` and `no-brotli` on the rewrite itself
-(`[E=no-gzip:1,E=no-brotli:1]`). It has to be done there: `SetEnvIf` sees the
-original URI, before the rewrite, so it never matches the `.br` name.
-
-### Server-side changes made
-
-Only one, and it is global to the box (which also hosts `muriacare.my.id`):
-
-```sh
-a2enmod headers && apache2ctl configtest && systemctl reload apache2
-```
-
-`mod_brotli` is loaded but its `brotli.conf` is **not** symlinked into
-`mods-enabled`, so there is no on-the-fly brotli. That is deliberate and should
-stay that way — every text file ships a `.br` built at quality 11, on-the-fly
-would be quality 5 and cost CPU per request, and adding the filter re-opens the
-double-compression hole above.
-
-### Verified against the live site
-
-```sh
-curl -sI -H 'Accept-Encoding: gzip, deflate, br' https://ilikepdf.muriacare.my.id/watermark.html
-#   Content-Encoding: br · Content-Length: 12259 · Cache-Control: no-cache
-```
-
-- `Content-Length` matching the on-disk `.br` byte-for-byte is the check that
-  catches double compression. When it was broken the response was chunked with
-  no `Content-Length` at all, which is easy to skim past.
-- All three encodings (`identity`, `br`, `gzip`) decode to identical bytes
-  across pages, favicon and vendor bundles.
-- Hashed vendor files return `immutable`; `.html` returns `no-cache`.
-- `vendor/` serves its index instead of a listing, with vhost `Options Indexes`
-  on — which is what 9.3 traded the `Options -Indexes` line for.
-- **All 478 assertions pass against the live site.** The suites take any
-  `BASE`, and pointing them at production is the cheapest end-to-end check
-  there is — it exercises the brotli path, real TLS, and pdf.js actually
-  rendering, none of which `python3 -m http.server` can tell you:
-
-```sh
-BASE=https://ilikepdf.muriacare.my.id npm test
-```
-
-Deploy is a staged swap, so `.html` and `.html.br` are never briefly out of
-step with each other:
+`/var/www/ilikepdf`, `AllowOverride All`, HTTP/1.1.
 
 ```sh
 npm run build
@@ -518,333 +138,223 @@ ssh root@HOST 'set -e
   mv /var/www/ilikepdf.new /var/www/ilikepdf'
 ```
 
-Rolling back is `mv` in the other direction; the previous deploy is kept as
-`/var/www/ilikepdf.bak-*`. Clear old ones out occasionally, each is ~3.7 MB.
+A staged swap, so `.html` and `.html.br` are never briefly out of step. Rolling
+back is `mv` the other way; old deploys sit in `/var/www/ilikepdf.bak-*` at
+~3.7 MB each, clear them out occasionally.
 
-**`AllowOverride All` is load-bearing and easy to lose.** Ubuntu's
-`apache2.conf` ships `<Directory /var/www/> AllowOverride None`, so the
-per-vhost `<Directory /var/www/ilikepdf>` block is the only reason `.htaccess`
-is read at all. Move the docroot without moving that block and the site keeps
-working — just uncompressed, with no cache headers, and nothing to tell you.
-
-Moved off `/root/ilikepdf` on 2026-07-30: serving out of root's home only
-worked because `/root` is `drwx--x`, one `chmod` away from publishing the whole
-home directory. Both vhosts (`:80` and `:443`) were updated together — the
-`DocumentRoot` *and* the `<Directory>` block.
-
-### The touch path now has a suite
-
-`tests/mobile.smoke.mjs`, 18 assertions. It exists because every other suite
-runs in a desktop context, which reports `hover: hover` however narrow you make
-the viewport — so three pieces of CSS were unreachable from the whole suite, and
-each is the *only* way to do something on a phone:
-
-| rule | without it, on touch |
-|---|---|
-| `.tile .move` | no reordering at all — drag doesn't exist |
-| `.tile .remove` | no way to remove a file |
-| `.tile-controls` | no way to rotate a page |
-
-`launch()` now passes extra options through to the browser context;
-`isMobile`/`hasTouch` is what flips Chromium to hover:none and pointer:coarse.
-The suite asserts that *first* — without that check the rest would quietly pass
-against desktop CSS and prove nothing.
-
-It also covers the bottom-sheet panel under 900px, and completes a merge and a
-rotate entirely by tap. Green against source, `dist/` and production.
-
-**What it still cannot tell you** is what only real hardware can: iOS Safari
-resizing the viewport as the URL bar hides, whether the tap targets are
-comfortable under a thumb, and memory limits on a large PDF. Worth two minutes
-on an actual phone, but it is no longer an untested path.
-
-### Still worth doing
-
-- **`https://muriacare.my.id` has no `:443` vhost**, so it lands on ilikepdf's
-  SSL vhost and fails the certificate name check. Pre-existing, unrelated to
-  this site, but it is a broken URL. Port 80 is fine.
-- The error log is full of `wp-login.php` probes. Harmless against a static
-  site, just noise.
-
-## Phase 12 — What Phase 9 turned up
-
-### 12.1 A rebuild threw away the user's focus — DONE (2026-07-29)
-
-Found by running the full suite after Phase 9. Pre-existing: reproduced on a
-clean checkout with the Phase 9 work stashed.
-
-**The first diagnosis, written here, was wrong.** It blamed
-`find(item.id)?.focus()` in the keydown handler returning undefined. It doesn't
-— that chain is entirely synchronous (`reorder` → `store.moveTo` →
-`notifyChange` → `grid.refresh()`), so the new tile is always in the DOM by the
-time focus is restored, and the reorder itself always succeeded.
-
-**What actually happened.** `merge.js:88` hydrates each entry's page count and
-thumbnail asynchronously and calls `notifyChange` on each one. Every one of
-those is a full `grid.refresh()` — `el.replaceChildren()` — arriving *after* the
-keypress had already put focus in the right place. The rebuild destroyed the
-focused tile and focus fell to `<body>`. The cascade explains the rest: with
-focus on the document, the next arrow key went nowhere, so "arrow left moves it
-back" failed too.
-
-That is why it was intermittent against source and green against `dist/` — the
-inlined build finishes hydrating before the keyboard section starts; source,
-fetching a dozen modules separately, does not. Waiting for hydration to settle
-before pressing a key made it pass every time, which is what pinned it.
-
-So it was never really a test bug. **A keyboard user reordering files lost their
-place whenever a thumbnail finished loading.**
-
-**Fix.** `grid.refresh()` now preserves focus across the rebuild, in
-`focusMemo()` / `restoreFocus()`. Position already survived via FLIP and
-thumbnails via the cache; focus is the third thing that has to, and it belongs
-in the same place rather than in each caller. Notes on the shape of it:
-
-- It only ever restores focus that was **already inside this grid**. A refresh
-  fired by a background thumbnail must not yank the caret out of a text field
-  somewhere else on the page.
-- It restores to a button within the tile when that is where focus was — the ✕
-  and the touch ← → carry `data-action`, and they are rebuilt too.
-- It restores with `preventScroll: true`. Putting focus back where it already
-  was has no business moving the viewport. The keydown handler still calls a
-  plain `focus()` afterwards, which is the deliberate-move case: the user asked
-  for it, so the tile they moved is scrolled into view.
-
-**Cost:** ~179 B brotli on every tool page, since `grid.js` is on all eight.
-Worst page `watermark.html` is now 12,594 of 14,336 (88%).
-
-**Two new assertions** in `merge.smoke.mjs` force the rebuild on demand by
-adding a file, rather than waiting on the race. They fail deterministically
-without the fix — as do the three original ones, which is the useful part: the
-suite is now honest about this instead of intermittent.
-
-### 12.2 Watermark font embedding — DONE (2026-07-30)
-
-Deferred from 9.2, which shipped "Helvetica can't draw those characters" as the
-honest refusal. This is the complete fix: **Watermark takes a `.ttf` or `.otf`
-from the user and draws any script at all.**
-
-**The cost estimate here was wrong, and not by a little.** It said
-`@pdf-lib/fontkit` was "~140 KB". Measured:
-
-| | raw | brotli |
-|---|---|---|
-| `@pdf-lib/fontkit` | 758,440 | **265,644** |
-| pdf-lib, for scale | 525,099 | 166,264 |
-| pdf.worker | 1,087,212 | 234,241 |
-
-It is **the largest single file the site ships**, bigger than pdf-lib itself.
-That is survivable only because of *when* it loads: nothing fetches it until
-someone actually picks a font, so the default path is byte-for-byte what it was.
-Anyone reconsidering this should reconsider that property first.
-
-Against the page budget it is cheap, because vendor files are not inlined — only
-the picker and its wiring land in the HTML. **`watermark.html` went from 12,790
-to 13,226 of 14,336 (89% → 92%), +436 B.** That is the tightest page in the
-project and the smallest remaining headroom it has ever had: **1,110 bytes**.
-The next feature that touches Watermark should expect to pay for itself by
-pulling the shared CSS out to a cached file, which README already names as the
-cheapest lever.
-
-**Subsetting is what makes the output cheap.** `embedFont(bytes, { subset: true })`
-puts in only the glyphs used: a 5.9 MB Japanese face added **3 KB** to a test
-document. Without `subset: true` the whole face would go in, and it would be
-absurd. Don't remove it.
-
-**The preview/export invariant survives, which was the real design problem.**
-`helvetica.js` exists so a mark can be measured before pdf-lib loads, and
-"preview and export must agree" is load-bearing — a preview showing 22 marks
-where 12 land is worse than no preview. A supplied font has no metrics we can
-know up front, so instead of a second implementation there is a throwaway
-`PDFDocument` created at pick time whose `embedFont` result the preview measures
-against. Same library, same font bytes, same call the export makes. Asserted
-under tiling, where a wrong width shows up immediately: **198 previewed, 198
-drawn.**
-
-**The two fonts fail in opposite directions**, and the button says so either way:
-
-| | how it fails | what catches it |
-|---|---|---|
-| Helvetica | *throws* at export on non-WinAnsi | `canDraw()` (9.2) |
-| a supplied font | silently draws **blanks** for missing glyphs | `hasGlyphForCodePoint` via fontkit |
-
-The second is the quieter failure and the reason the coverage check exists at
-all; the button names the offending character (`That font has no glyph for 旦`).
-
-`tests/fixtures/tiny.ttf` is **776 bytes and hand-built** by `make-font.mjs` —
-a real TrueType with `head`/`hhea`/`maxp`/`hmtx`/`cmap`/`loca`/`glyf`/`name`/
-`post`/`OS/2`, every glyph the same rectangle. Written rather than copied for
-the same reason `make-signed.mjs` builds its own signature: no licence to reason
-about, no megabyte in the repo, reproducible from source. It maps `A`, `B` and
-`日`, and **deliberately does not map `旦`** — a font that covered everything
-could not test the missing-glyph path.
-
-15 assertions in `watermark.smoke.mjs`, including that the refusal is still
-there without a font, that a non-font file is refused with a message rather than
-throwing, and that the mark really lands on every page.
-
-### 12.3 The shared core moved out of every page — DONE (2026-07-30)
-
-12.2 left `watermark.html` at 92% of budget with 1,110 bytes spare, which is not
-enough for another feature. Soyae proposed splitting shared JS into its own
-file, and the proposal was right — though **the reason given for it was not**,
-and the difference matters enough to write down.
-
-**The budget is per connection, not per file.** TCP's initial congestion window
-(~10 segments, ≈14,480 B) belongs to the *connection*. Splitting one 13 KB
-response into two 7 KB ones does not buy a second window: both draw on the
-first, and the second cannot even be requested until the first has arrived and
-been parsed. So "every file under 14 KB" is a strictly weaker property than "the
-page arrives in one round trip", and only the first is still true. Production is
-**HTTP/1.1**, so there is no multiplexing to soften it either.
-
-What splitting actually buys is **cache reuse across pages**, and it is worth
-having:
-
-| | before | after |
-|---|---|---|
-| `watermark.html` | 13,226 (92%) | **8,227 (57%)** |
-| `split.html` | 11,912 | 7,099 |
-| `merge.html` | 11,140 | 5,921 |
-| shared chunks | — | 5 files, 6,711 B total, cached a year |
-| first paint | RTT 1 | **RTT 1** |
-| interactive | RTT 1 | RTT 2 on a first visit, RTT 1 thereafter |
-
-**First paint is genuinely unchanged.** The CSS is still inline and a module
-script is deferred regardless, so the page renders on the first round trip
-either way. What moves is time to interactive, and only on a first visit —
-which also means the header and footer, injected by `chrome.js`, are briefly
-empty. The shells keep the 64px height, so nothing jumps.
-
-**esbuild produces five chunks, not one**, because different subsets of pages
-share different modules — `place.js` by two, `images.js` by two, the core by
-eight. That was left alone rather than forced into a single barrel: the graph is
-**flat** (every chunk is imported by the entry, only one imports another that
-the entry already names), so they are fetched in one parallel wave, not a
-waterfall. Five files also means finer cache invalidation. **If a chunk ever
-imports a chunk that imports a chunk, that second round trip becomes a third** —
-that flatness is the property to protect, and there is a comment in `build.mjs`
-saying so.
-
-**The bug this shook out** is worth remembering because it only showed on a tool
-page. Chunk filenames are rewritten in two places that resolve them against
-different bases: an entry is inlined into a page at the site root and needs
-`./js/chunk.x.js`, while a chunk is served from `/js/` and needs `./chunk.x.js`.
-Using one map for both asked for `/js/js/…` and 404'd. `index.html` passed
-anyway, because the home page's chunk imports no other chunk — so a smoke test
-of the landing page alone would have called this green.
-
-Verified beyond the suites: `dist/` still works served from a subdirectory,
-which the chunk imports could easily have broken, and the year-long immutable
-`Cache-Control` already matches `chunk.<hash>.min.js` without touching the
-`.htaccess` rule.
-
-**The next lever, if it is ever needed, is the shared CSS** — 3,850 B on every
-page. Do it knowing it is a *worse* trade than this one: CSS is render-blocking,
-so extracting it costs a round trip to first paint rather than to interactive.
-README used to recommend it first; that advice was wrong and has been fixed.
-
----
-
-## Deliberately not doing
-
-Keep saying no to these; they're in `README.md` too, and the reasons haven't
-changed.
-
-- **Compress PDF.** pdf-lib can strip metadata and re-save with
-  `useObjectStreams: true`. That is low single-digit percentages. It is not what
-  anyone means by "compress a PDF", and shipping it would be a lie.
-- **Word/Excel conversion.** Not possible client-side. Both conversion pages say
-  so in `.hero-note` — leave that text in.
-- **Encryption / password removal.** pdf-lib can only *ignore* existing
-  encryption on load, never apply it.
-
-If a future request seems to need one of these, say so plainly rather than
-shipping a placeholder that pretends to work.
-
----
-
-## Things that will bite you
-
-Learned the hard way; all of these are load-bearing.
-
-- **`.slice()` into pdf-lib and pdf.js, always.** Both detach the buffer, and
-  the second read then fails silently — including "export twice in a row".
-- **Preview and export must agree.** The watermark tile count is computed from
-  `js/core/helvetica.js`, which carries pdf-lib's own AFM widths so the number of
-  marks previewed is the number drawn. Regenerate with
-  `node tests/fixtures/make-metrics.mjs` if the pdf-lib pin ever changes. Don't
-  substitute an estimate — a preview showing 22 marks where 12 land is worse
-  than no preview.
-- **Anything drawn on a page needs `js/core/place.js`.** pdf-lib draws in a
-  page's *unrotated* space; a corner is not a fixed pair of coordinates.
-  `tests/fixtures/prerotated.pdf` is the regression case.
-- **`grid.js` decoration must happen in `decorate()`, never at tile
-  construction.** A late-arriving thumbnail calls `replaceChildren` on
-  `.thumb-box` and destroys anything built up front.
-- **`refresh()` is called by things the user didn't do.** Tools hydrate entries
-  in the background and notify per entry, so a rebuild can land at any moment.
-  Anything that has to survive one belongs *inside* `refresh()`, not in the
-  caller that happened to trigger it — position (FLIP), thumbnails (the cache)
-  and focus (`focusMemo`/`restoreFocus`) all work that way. 12.1 was the cost of
-  focus not being on that list.
-- **Vendor paths in source must stay literal and relative** (`"vendor/pdf.min.js"`,
-  never built from a variable). The build rewrites them to hashed names with a
-  string replace and *throws* if any survive — which is what keeps `dist/`
-  working from a subdirectory.
-- **Run the whole suite, not just the one you touched.** The core modules are
-  shared; a change for one tool has broken another in phases 1, 2, 4 and 5.
-
----
-
-## Suggested order
-
-```
-9    all three defects      DONE      2026-07-29
-12.1 focus across rebuild   DONE      2026-07-29
-11   deploy + verify        DONE      2026-07-30  (found 2 more .htaccess bugs)
-10.1 AcroForm               DONE      2026-07-30  (confirmed; 3 tools, not 2)
-10.2-10.6 the sweep         DONE      2026-07-30  (4 of 5 were non-problems)
-10.7 digital signatures     DONE      2026-07-30  (not predicted; all 6 tools)
-12.2 font embedding         DONE      2026-07-30  (fontkit was 2x the estimate)
-12.3 split the shared core  DONE      2026-07-30  (worst page 92% -> 57%)
-```
-
-**Everything on the list is done.** The next work is whatever the next request
-brings.
-
-Two things a future session should pick up:
-
-- **`dist/` is well ahead of production.** Phase 10 changed all six PDF→PDF
-  pages. Deploy with the staged swap in Phase 11.
-- **Two real-world files would close the two honest gaps**, and both just need
-  dropping into `tmp/real/` before a sweep:
-  - **a genuinely signed PDF** (e-materai, or any signed government form) for
-    10.7 — the structural fixture proves destruction, not what Acrobat says;
-  - **a user-password-protected PDF**, one whose *page streams* are encrypted,
-    for 10.5 — to find out whether pdf-lib throws or quietly emits garbage.
-    Neither can be produced on this machine.
-
-The lesson from 11 was that the `.htaccess` was reviewed twice, looked right
-both times, and was still wrong in two ways only a real Apache could show. Phase
-10 was the same shape of gap and it paid out the same way — but not where
-anyone was pointing. **Of the six defects the phase produced, one was predicted
-(10.1, and the prediction was wrong about what it meant), one was in a case
-nobody had listed at all (10.7, signatures), one was a lie in Merge's summary
-(10.5), one was a bug in the probe measuring all this, and one was a
-nine-month-old bug in Watermark that only surfaced because a new message had to
-be routed through the same code.** Four of the five things the table predicted
-would break didn't.
-
-The generalisable bit: what a real file teaches you is rarely the thing you
-opened it to check.
-
-One thing worth knowing before you start a server: something else may already
-hold port 8000 (a `php -S localhost:8000` was running during Phase 12). `npm run
-serve` fails with "address in use" and the suites then quietly test *whatever is
-on that port* instead. If results stop making sense, check what you are actually
-talking to before you debug the code:
+Then point the suites at production — the cheapest end-to-end check there is,
+since it exercises brotli, real TLS and pdf.js actually rendering:
 
 ```sh
-curl -s http://localhost:8000/js/core/grid.js | head -1    # should be JS, not HTML
+BASE=https://ilikepdf.muriacare.my.id npm test
 ```
+
+### What a real Apache taught us, that two reviews had not
+
+The `.htaccess` was read twice and looked right both times. The first deploy
+served **binary garbage**, at HTTP 200 throughout:
+
+1. **`mod_headers` was not enabled but `mod_rewrite` was** — the default Ubuntu
+   install. The rewrite served `pdf.min.js.br` while the block that labels it
+   `Content-Encoding: br` was skipped. Guarding the two modules *independently*
+   assumed rewriting-without-labelling was survivable. It is the one combination
+   that must never happen, so **the rewrite now lives inside the mod_headers
+   guard**.
+2. **`mod_deflate` re-compressed the pre-compressed response.** Ubuntu's default
+   `deflate.conf` gzipped the `.br` payload a second time while
+   `Content-Encoding` claimed one layer. The tell was a served `Content-Length`
+   of 89,039 for an on-disk `.gz` of 89,006 — *bigger*. Fixed with
+   `[E=no-gzip:1,E=no-brotli:1]` on the rewrite itself; `SetEnvIf` can't do it
+   because it sees the pre-rewrite URI.
+
+Checks that catch these: `Content-Length` must match the on-disk `.br`
+byte-for-byte (when broken it was chunked with no `Content-Length` at all), and
+all three encodings must decode to identical bytes.
+
+**Two things to not lose:**
+
+- **`AllowOverride All` is load-bearing.** Ubuntu's `apache2.conf` ships
+  `<Directory /var/www/> AllowOverride None`, so the per-vhost block is the only
+  reason `.htaccess` is read. Move the docroot without moving that block and the
+  site keeps working — just uncompressed, uncached, with nothing to tell you.
+- **`mod_brotli` is deliberately not enabled.** Every text file ships a `.br`
+  built at quality 11; on-the-fly would be quality 5, cost CPU per request, and
+  re-open the double-compression hole.
+
+---
+
+## The record
+
+Kept because in most of these the *first diagnosis was wrong*, and that is what
+stops the mistake being made again.
+
+### Phase 9 — three defects (2026-07-29)
+
+**9.1 Export failures were invisible.** `catch` set the message, `finally` called
+`update()`, `update()` overwrote it. Both tools now keep a `failure` variable the
+render function reads first.
+
+**9.2 Watermark couldn't draw non-Latin text.** — *The write-up claimed
+`helvetica.js` "already knows the encodable range". It didn't:* it carried ASCII
+32–126 only, so the WinAnsi high range had to be added — `0xA0–0xFF` plus the 27
+non-contiguous code points WinAnsi rearranges. Getting that list right is the
+whole job; too strict would refuse ordinary European text, which is worse than
+the bug. Both directions are asserted.
+
+**9.3 `.htaccess` could 500 the site.** — *The suggested fix would not have
+worked.* `<IfModule mod_autoindex.c>` asks whether a module is *loaded*; the 500
+came from `AllowOverride` not permitting `Options`, which `<IfModule>` has no
+bearing on. The line was removed rather than wrapped. Everything in the
+generated `.htaccess` is now one `AllowOverride` class (FileInfo) and guarded for
+module presence. `dist/vendor/index.html` is what stops the directory listing.
+
+### Phase 10 — PDFs we didn't make (2026-07-30)
+
+Every fixture we generate is a 595×842 page with one line of Helvetica. The
+suites prove the logic and almost nothing about real files. 105 runs, every tool
+over 15 third-party PDFs.
+
+**Four of the five predicted problems were not problems.** Embedded CID fonts,
+352-page documents (worst tool 21 s), 6–8 MB scans, PDF/A and linearised files
+all came through every tool cleanly. That is worth as much as a defect: the
+table had been guessing since it was written.
+
+**10.1 AcroForm — confirmed, but the write-up overclaimed.** `copyPages` carries
+every widget across, with `/FT`, `/Parent`, `/AP` and `/V` intact. What it drops
+is the catalog's **`/AcroForm`**. So the page renders pixel-identically, a
+browser still shows fillable boxes, and pdf-lib sees zero fields.
+*The shipped warning said "the fields will be gone". Soyae merged hexapdf's
+public `acro_form.pdf`, saw them plainly still there, and asked whether he was
+doing it wrong. He wasn't.* The wording now claims only what was measured: the
+boxes and their contents survive, the form does not. **Merge is affected too —
+the prediction named only Split and Organize.**
+
+**10.5 Merge lied about its page count.** An encrypted PDF that six tools refuse
+is merged happily, because merge never opens it with pdf.js and pdf-lib is more
+tolerant. That capability is worth keeping; the card reading "0 pages" and the
+summary promising 3 while the export produced 4 was not. `hydrate()` now
+separates "couldn't read it" from "read it, it's empty".
+
+**10.7 Digital signatures — nobody had listed this, and every tool breaks them.**
+Two different ways, and the second is worse:
+
+| | Merge · Split · Organize | Rotate · Numbers · Watermark |
+|---|---|---|
+| signature | **removed entirely** | **kept, and no longer verifies** |
+| a viewer says | unsigned | *"this document has been altered"* |
+
+*The first measurement inverted this*, reporting rotate as removing the
+signature — pdf-lib saves with object streams, so a byte scan for `/ByteRange`
+finds nothing. `tests/signature.mjs` locates the field through pdf-lib instead.
+
+**The rig.** `npm run fetch-real` pulls 15 third-party PDFs into gitignored
+`tmp/real/` against a committed manifest with hashes; `npm run probe:real`
+sweeps every tool over every one. Neither is in `npm test` — the suites must
+pass on a clean offline checkout. *The probe's own first run mis-read every
+encrypted file as a hang, because it waited only for success.*
+
+### Phase 11 — deployed and verified (2026-07-30)
+
+See **Deploying** above; that is where the substance lives.
+`tests/mobile.smoke.mjs` was added here — 18 assertions, and it exists because
+every other suite runs in a desktop context that reports `hover: hover` however
+narrow the viewport, leaving three pieces of CSS unreachable, each the *only*
+way to do something on a phone (reorder, remove, rotate). It asserts
+`hover:none` *first*, or the rest would pass against desktop CSS and prove
+nothing.
+
+### Phase 12 — what fell out of the rest
+
+**12.1 A rebuild threw away the user's focus (2026-07-29).** — *The first
+diagnosis blamed the keydown handler and was wrong.* That chain is entirely
+synchronous. What actually happened: `merge.js` hydrates entries asynchronously
+and calls `notifyChange` per entry, and every one is a full `grid.refresh()`
+arriving after the keypress had already placed focus. A keyboard user reordering
+files lost their place whenever a thumbnail finished loading. Focus now survives
+`refresh()` alongside position and thumbnails.
+
+**12.2 Watermark takes a supplied font (2026-07-30).** The complete fix for 9.2:
+pick a `.ttf`/`.otf` and any script draws. — *The cost estimate here was wrong.*
+`@pdf-lib/fontkit` was recorded as "~140 KB"; it is **758 KB raw / 266 KB
+brotli**, the largest single file the site ships, larger than pdf-lib. Only
+survivable because nothing fetches it until a font is picked. `subset: true` is
+what keeps the *output* cheap — a 5.9 MB face adds ~3 KB.
+The two font paths fail in opposite directions: Helvetica *throws* on
+non-WinAnsi, a supplied font silently draws **blanks**. Both are checked before
+the button enables. `tests/fixtures/tiny.ttf` is 776 bytes, hand-built, and
+deliberately lacks a glyph so the missing-glyph path has something to catch.
+
+**12.3 The shared core moved out of every page (2026-07-30).** Worst page 92% →
+57%. esbuild emits five chunks rather than one because different page subsets
+share different modules; left alone because the graph is **flat**, so they fetch
+in one parallel wave. *If a chunk ever imports a chunk that imports a chunk, the
+second round trip becomes a third.*
+*The bug this shook out only appeared on a tool page:* chunk names resolve
+against two bases — an inlined entry sits at the site root and needs
+`./js/chunk.x.js`, a chunk is served from `/js/` and needs `./chunk.x.js`. One
+map for both asked for `/js/js/` and 404'd, and `index.html` passed anyway
+because its chunk imports no other.
+
+**12.4 The landing page, and speculative loading (2026-07-30).** 12.3 cost
+`index.html` its content on the first round trip — `<main id="toolGrid">` is
+empty in the source, `home.js` draws the cards, so the page committed in 175 ms
+on a 150 ms link and then showed **nothing for another 283 ms**. Every suite
+passed throughout.
+
+`index.html` is now built **unsplit** (`SOLO` in `build.mjs`) so its entry is
+inlined: +283 ms → **+94 ms**, and what remains is body transfer, not a request.
+It costs 1,154 B and duplicates the core it also prefetches — deliberate, so the
+first thing anyone sees isn't an empty box.
+
+Having made index instant, it pays that forward: it prefetches every chunk the
+tool pages ask for, at idle priority. Chunks are `immutable`, so a warmed one is
+used with **no revalidation** — which is why this warms chunks and not pages,
+since pages are `no-cache` on purpose. Measured: allowing or blocking those
+prefetches makes no difference to when index itself renders. Speculation rules
+then prerender the hovered card in Chrome/Edge, matched by `selector_matches` so
+`js/core/tools.js` stays the only place a tool is declared.
+
+The regression assertion is deterministic rather than timed: block `js/chunk*`
+and require the grid anyway. Prerendering itself is *not* asserted — the CDP
+`Preload` domain can observe it, but the test would be flaky.
+
+---
+
+## Open work
+
+Nothing is queued. The next work is whatever the next request brings.
+
+- **`dist/` is well ahead of production.** Everything from Phase 10 onward is
+  unshipped, including the new `js/` directory. Soyae deploys by hand.
+- **Two real-world files would close the two honest gaps**, and both just need
+  dropping into `tmp/real/` before a sweep. Neither can be produced on this
+  machine — there is no qpdf, Ghostscript or LibreOffice, and pdf-lib can't
+  encrypt or sign.
+  - **A genuinely signed PDF** (e-materai, or any signed government form) for
+    10.7 — the structural fixture proves destruction, not what Acrobat says.
+  - **A user-password-protected PDF** whose *page streams* are encrypted, for
+    10.5 — to find whether pdf-lib throws or quietly emits garbage.
+- **Two minutes on a real phone.** `mobile.smoke.mjs` can't tell you about iOS
+  Safari resizing the viewport as the URL bar hides, whether tap targets are
+  comfortable under a thumb, or memory limits on a large PDF.
+- **`https://muriacare.my.id` has no `:443` vhost**, so it lands on ilikepdf's
+  SSL vhost and fails the certificate name check. Pre-existing and unrelated,
+  but it is a broken URL. Port 80 is fine.
+- **If a page busts the budget again**, the shared CSS is the next lever (3,850 B
+  on every page). Do it knowing it is a *worse* trade than the JS split: CSS is
+  render-blocking, so extracting it costs a round trip to first paint rather
+  than to interactive.
+
+---
+
+## The generalisable bit
+
+Phase 11 showed an `.htaccess` that was reviewed twice, looked right both times,
+and was wrong in two ways only a real Apache could reveal. Phase 10 was the same
+shape of gap and paid out the same way — but not where anyone was pointing. Of
+the six defects it produced, **one was predicted**; one was in a case nobody had
+listed, one was a lie in Merge's summary, one was in the probe doing the
+measuring, and one was an old Watermark bug that surfaced only because a new
+message had to route through the same code.
+
+What a real file teaches you is rarely the thing you opened it to check.
